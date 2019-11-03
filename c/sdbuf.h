@@ -14,6 +14,20 @@ extern "C" {
 typedef uint8_t  sdb_hdr_t;
 typedef uint16_t sdb_len_t;
 
+// this type is not necessary, but useful as
+// a shorthand convenience when "getting"
+// integers
+typedef union sdb_val_t {
+    uint8_t  u8;
+    int8_t   s8;
+    uint16_t u16;
+    int16_t  s16;
+    uint32_t u32;
+    int32_t  s32;
+    uint64_t u64;
+    int64_t  s64;
+} sdb_val_t;
+
 typedef enum __attribute__((__packed__)) sdbtypes_t {
     SDB_S8, SDB_S16, SDB_S32, SDB_S64,
     SDB_U8, SDB_U16, SDB_U32, SDB_U64,
