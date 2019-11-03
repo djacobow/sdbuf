@@ -26,11 +26,14 @@ typedef union sdb_val_t {
     int32_t  s32;
     uint64_t u64;
     int64_t  s64;
+    float    f;
+    double   d;
 } sdb_val_t;
 
 typedef enum __attribute__((__packed__)) sdbtypes_t {
     SDB_S8, SDB_S16, SDB_S32, SDB_S64,
     SDB_U8, SDB_U16, SDB_U32, SDB_U64,
+    SDB_FLOAT, SDB_DOUBLE,
     SDB_BLOB,
     _SDB_INVALID_TYPE,
 } sdbtypes_t;

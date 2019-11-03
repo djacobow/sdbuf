@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
+import struct
 from sys import byteorder
+
 class sdb:
 
     def __init__(self):
@@ -29,16 +31,18 @@ class sdb:
         )
 
         self.types = {
-           's8':   { 'idx': 0, 'size': 1, 'signed': True  }, 
-           's16':  { 'idx': 1, 'size': 2, 'signed': True  }, 
-           's32':  { 'idx': 2, 'size': 4, 'signed': True  }, 
-           's64':  { 'idx': 3, 'size': 8, 'signed': True  }, 
-           'u8':   { 'idx': 4, 'size': 1, 'signed': False }, 
-           'u16':  { 'idx': 5, 'size': 2, 'signed': False }, 
-           'u32':  { 'idx': 6, 'size': 4, 'signed': False }, 
-           'u64':  { 'idx': 7, 'size': 8, 'signed': False }, 
-           'blob': { 'idx': 8, 'size': 0, 'signed': False },
-           '_inv': { 'idx': 9, 'size': 0, 'signed': False },
+           's8':      { 'idx': 0,  'size': 1, 'signed': True  }, 
+           's16':     { 'idx': 1,  'size': 2, 'signed': True  }, 
+           's32':     { 'idx': 2,  'size': 4, 'signed': True  }, 
+           's64':     { 'idx': 3,  'size': 8, 'signed': True  }, 
+           'u8':      { 'idx': 4,  'size': 1, 'signed': False }, 
+           'u16':     { 'idx': 5,  'size': 2, 'signed': False }, 
+           'u32':     { 'idx': 6,  'size': 4, 'signed': False }, 
+           'u64':     { 'idx': 7,  'size': 8, 'signed': False }, 
+           'float':   { 'idx': 8,  'size': 4 }, 
+           'double':  { 'idx': 9,  'size': 8 }, 
+           'blob':    { 'idx': 10, 'size': 0 },
+           '_inv':    { 'idx': 11, 'size': 0 },
         }
         self.type_names = [ x for x in self.types ]
 
@@ -76,8 +80,11 @@ class sdb:
                     name,val['type'],
                     self._bytesByFour(self.vals[name]['val_bytes'])))
             else:
+                print(val)
                 print(" {:17} {:4} val {:20} {:30}".format(
-                    name,val['type'], val['value'],
+                    name,
+                    val['type'], 
+                    0, #val['value'],
                     self._bytesByFour(list(reversed(self.vals[name]['val_bytes']))))
                 )
 
@@ -105,6 +112,11 @@ class sdb:
                     byteorder='little'
                 )
                 self.buf += val['val_bytes']
+            elif val['type'] == 'float':
+                print('val',val['value'])
+                self.buf += struct.pack('f',val['value'])
+            elif val['type'] == 'double':
+                self.buf += struct.pack('d',val['value'])
             else:
                 self.buf += val['value'].to_bytes(
                     self.types[val['type']]['size'],
@@ -169,6 +181,12 @@ class sdb:
             data_bytes = self.buf[idx:idx+dsize] 
             if type_name == 'blob':
                 data_val = None
+            elif type_name == 'float':
+                temp0 = struct.unpack('f',data_bytes)
+                data_val = temp0[0] 
+            elif type_name == 'double':
+                temp1 = struct.unpack('d',data_bytes)
+                data_val = temp1[0] 
             else:
                 data_val = self._bytesToInt(data_bytes,self.types[type_name]['signed'])
             idx += dsize
@@ -234,7 +252,7 @@ class BytesEncoder(json.JSONEncoder):
 
 if __name__ == '__main__':
 
-    for inname in ['t0','t1']:
+    for inname in ['t0','t1','t2']:
         s = sdb()
         s.initFromFile('../c/' + inname + '.dat')
         s.debug()

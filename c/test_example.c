@@ -152,11 +152,17 @@ int test_two() {
         char name_buf[80];
         snprintf(name_buf, 80, "%s_%03d_%d.%c", prename_buf, i, stype, is_signed ? 'i' : 'u');
         sdb_val_t rint;
-        rint.u64 = 0;
-        rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
-        rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
-        rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
-        rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
+        if (stype < SDB_FLOAT) {
+            rint.u64 = 0;
+            rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
+            rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
+            rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
+            rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
+        } else if (stype == SDB_FLOAT) {
+            rint.f = ((float)rand() * (float)rand()) / (float)RAND_MAX;
+        } else if (stype == SDB_DOUBLE) {
+            rint.d = ((double)rand() * (double)rand()) / (double)RAND_MAX;
+        }
 
         if (stype == SDB_BLOB) {
             uint8_t tbuf[256];

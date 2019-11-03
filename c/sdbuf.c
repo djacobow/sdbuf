@@ -52,14 +52,16 @@
                     ((IS_BIG_ENDIAN ? 0x80 : 0x0)))
 
 static const uint8_t sdbtype_sizes[] = {
-    1,2,4,8,
-    1,2,4,8,
+    sizeof(int8_t), sizeof(int16_t), sizeof(int32_t), sizeof(int64_t),
+    sizeof(uint8_t), sizeof(uint16_t), sizeof(uint32_t), sizeof(uint64_t),
+    sizeof(float), sizeof(double),
     0, 0,
 };
 
 static const char *sdbtype_names[] = {
     "s8","s16","s32","s64",
     "u8","u16","u32","u64",
+    "float", "double",
     "blob", "_invalid",
 };
 
@@ -113,7 +115,8 @@ void sdb_debug(sdb_t *sdb) {
         memcpy(&type,p,sizeof(sdbtypes_t));
         p += sizeof(sdbtypes_t);
         sdb_len_t dsize = 0;
-        uint64_t d = 0;
+        sdb_val_t d;
+        d.u64 = 0;
         if (type == SDB_BLOB) {
             memcpy(&dsize, p, SDB_BLOB_T_SZ);
             p += SDB_BLOB_T_SZ;
@@ -127,18 +130,20 @@ void sdb_debug(sdb_t *sdb) {
         char nstr[30];
         memset(nstr,0,30);
         switch (type) {
-            case SDB_S8:  sprintf(nstr,"%d",(int8_t)d); break;
-            case SDB_S16: sprintf(nstr,"%d",(int16_t)d); break;
-            case SDB_S32: sprintf(nstr,"%" PRIi32,(int32_t)d); break;
-            case SDB_S64: sprintf(nstr,"%" PRIi64,(int64_t)d); break;
-            case SDB_U8:  sprintf(nstr,"%u",(uint8_t)d); break;
-            case SDB_U16: sprintf(nstr,"%u",(uint16_t)d); break;
-            case SDB_U32: sprintf(nstr,"%" PRIu32,(uint32_t)d); break;
-            case SDB_U64: sprintf(nstr,"%" PRIu64,(uint64_t)d); break;
-            case SDB_BLOB: sprintf(nstr, "%u bytes",dsize); break;
+            case SDB_S8:     sprintf(nstr,"%d",d.s8); break;
+            case SDB_S16:    sprintf(nstr,"%d",d.s16); break;
+            case SDB_S32:    sprintf(nstr,"%" PRIi32,d.s32); break;
+            case SDB_S64:    sprintf(nstr,"%" PRIi64,d.s64); break;
+            case SDB_U8:     sprintf(nstr,"%u",d.u8); break;
+            case SDB_U16:    sprintf(nstr,"%u",d.u16); break;
+            case SDB_U32:    sprintf(nstr,"%" PRIu32,d.u32); break;
+            case SDB_U64:    sprintf(nstr,"%" PRIu64,d.u64); break;
+            case SDB_FLOAT:  sprintf(nstr,"%f",d.f); break;
+            case SDB_DOUBLE: sprintf(nstr,"%f",d.d); break;
+            case SDB_BLOB:   sprintf(nstr, "%u bytes",dsize); break;
             default: break;
         }                 
-        printf("-d- %-16s: %4s : %-20s : 0x%" PRIx64"\n",name, sdbtype_names[type], nstr, type == SDB_BLOB ? dsize : d);
+        printf("-d- %-16s: %4s : %-20s : 0x%" PRIx64"\n",name, sdbtype_names[type], nstr, type == SDB_BLOB ? dsize : d.u64);
     }
     printf("-d- ---------\n");
     uint32_t overhead_pct = (100 * total_size) / (total_dsize);
