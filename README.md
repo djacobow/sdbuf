@@ -20,17 +20,18 @@ Any `sdb` buffer starts out with the following two items:
 All integer values are little-endian, regardless of machine endianness.
 
 |field|size|description|
-|--|--|--|
+|---|---|---|
 |id|1B|ID header. Consists of a 3b minor version, a 3b major version, and an machine endianness bit|
 |dsize|2B|A `uint16_t` that indicates how many bytes to follow|
 
 Following the header are zero or more data records that look like this:
+
 |field|size|description|
-|--|--|--|
-|name|n+1 B|A null-terminated string of length n that represent the datum's name
-|type|1B|A one byte field indicating the type of the data to follow. Supported types are `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t`, and `blob`. Blob indicates just a buffer of bytes|
-|size|0 or 2B|most data types do not have this field, but if the type is `blob`, then this field indicates the length of the data to follow|
-|data|as indicated by type or size field|0-n B of data. If any of the integer types, this is stored little-endian.
+|---|---|---|
+|name |n+1 B |A null-terminated string of length n that represent the datum's name |
+|type |1B |A one byte field indicating the type of the data to follow. Supported types are `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t`, and `blob`. Blob indicates just a buffer of bytes |
+|size |0 or 2B |most data types do not have this field, but if the type is `blob`, then this field indicates the length of the data to follow |
+|data |as indicated by type or size field |0-n B of data. If any of the integer types, this is stored little-endian. |
 
 
 That's it! There is no CRC or other error checking, nor is there an end of file sentinel. It is assumed that correctness of transmission is managed by the transmission layer, so no CRC is present here.
