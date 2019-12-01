@@ -31,7 +31,7 @@ Following the header are zero or more data records that look like this:
 |name |n+1 B |A null-terminated string of length n that represent the datum's name |
 |type |1B |A one byte field indicating the type of the data to follow. Supported types are `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t`, and `blob`. Blob indicates just a buffer of bytes. If the upper bit (`0x80`) is set, that indicates that an array follows. |
 |size |0 or 2B |most data types do not have this field, but if the type is `blob`, then this field indicates the length of the data to follow |
-[count|0 or 2B |If the ubber bit of type is a 1, this field will be present, indicating the number of datums to follow, otherwise, this fields is empty and exactly one datum is expected |
+|count|0 or 2B |If the upper bit of type is a 1, this field will be present, indicating the number of datums to follow, otherwise, this fields is empty and exactly one datum is expected |
 |data |as indicated by type or size field |0-n B of data. If any of the integer types, this is stored little-endian. |
 
 
@@ -48,18 +48,16 @@ size_t buf_len;
 buf_len = recv_from_somewhere(buf,MAX_LEN);
 
 sdb_t mydb;
-// error checking not included in this example
-int8_t fail = sdb_init(&mydb, buf, buf_len, false);
 
-// now you can read the data:
-int16_t fdata;
-sdb_member_info_t mi;
-fail  = sdb_find(&sdb, "foo", &mi);
-if (!fail) {
-    if ((mi.type == SDB_S16) && (mi.elemcount == 1)) {
-        fail = sdb_get(&mi, &fdata);
-        if (!fail) {
-            printf("fdata is %s\n",fdata);
+if (!sdb_init(&mydb, buf, buf_len, false)) {
+    int16_t fdata;
+    sdb_member_info_t mi;
+    if (!sdb_find(&sdb, "foo", &mi)) {
+        if ((mi.type == SDB_S16) && (mi.elemcount == 1)) {
+            if (!sdb_get(&mi, &fdata)) {
+                printf("fdata is %d\n",fdata);
+            }
+        }
     }
 }
  ```
@@ -78,15 +76,16 @@ If you want to read a blob out of an `sdb` buffer, the procedure is exactly the 
 const size_t target_size = 512;
 uint8_t target[target_size];
 sdb_member_info_t mi;
-int8_t fail = sdb_find(&sdb, "bar", &mi);
-if (!fail) {
+if (!sdb_find(&sdb, "bar", &mi)) {
     if (mi.minsize <= target_size) {
-        fail = sdb_get(&mi, target);
+        if (!sdb_get(&mi, target)) {
+            // "target" now has copy of data
+        }
     }
 }
 ```
 
-`sdb_get` has no way of knowing how big your buffer is, so it is incumbent on you to check that the result will fit, before you call it.
+`sdb_get` has no way of knowing how big your buffer is, so it is incumbent on you to check that the result will fit, before you call it. All the info you need is in the `sdb_member_info_t`.
 
 Creating a buffer for transmission is similarly simple:
 ```C
