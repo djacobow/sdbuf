@@ -8,13 +8,14 @@ class sdb:
     def __init__(self):
         self.buf = bytearray()
         self.constants = {
-            'VER_MAJOR': 0x1,
-            'VER_MINOR': 0x1,
-            'SIZE_SIZE': 2,
-            'TYPE_SIZE': 1,
-            'HD_SIZE'  : 1,
-            'VS_SIZE'  : 2,
-            'HD_OFFSET': 0, 
+            'VER_MAJOR':  0x1,
+            'VER_MINOR':  0x1,
+            'SIZE_SIZE':  2,
+            'COUNT_SIZE': 2,
+            'TYPE_SIZE':  1,
+            'HD_SIZE'  :  1,
+            'VS_SIZE'  :  2,
+            'HD_OFFSET':  0, 
         }
         self.constants['VS_OFFSET'] = (
             self.constants['HD_OFFSET'] +
@@ -29,7 +30,7 @@ class sdb:
             ((self.constants['VER_MINOR'] & 0x7) << 0) |
             (0x80 if byteorder == 'bib' else 0x0)
         )
-
+        self.type_array_flag = 0x80;
         self.types = {
            's8':      { 'idx': 0,  'size': 1, 'signed': True  }, 
            's16':     { 'idx': 1,  'size': 2, 'signed': True  }, 
@@ -57,13 +58,20 @@ class sdb:
         self._dumpBytes(self.buf)
         self._scan()
 
+    # takes a scalar thing or a list of things of the same type
     def set(self,name,typename,value):
+        if not isinstance(value,list):
+            value = [value]
+
         self.vals[name] = {
             'type': self.types[typename]['idx'],
             'value': value,
         }
 
+    # takes a bytearray or a list of bytearrays of equal length"
     def setBlob(self,name,vbytes):
+        if not isinstance(vbytes,list):
+            vbytes = [vbytes]
         self.vals[name] = {
             'type': self.types['blob']['idx'],
             'val_bytes': vbytes,
@@ -78,14 +86,13 @@ class sdb:
             if val['type'] == 'blob':
                 print(" {:17} {:4} val {}".format(
                     name,val['type'],
-                    self._bytesByFour(self.vals[name]['val_bytes'])))
+                    self._bytesByFour(b''.join(self.vals[name]['val_bytes']))))
             else:
-                print(val)
                 print(" {:17} {:4} val {:20} {:30}".format(
                     name,
                     val['type'], 
-                    0, #val['value'],
-                    self._bytesByFour(list(reversed(self.vals[name]['val_bytes']))))
+                    ''.join(['[',','.join([str(x) for x in val['value']]),']']),
+                    self._bytesByFour(list(reversed(b''.join(self.vals[name]['val_bytes'])))))
                 )
 
     def saveToFile(self,fn):
@@ -100,28 +107,45 @@ class sdb:
             val = self.vals[name]
             self.buf += name.encode('ascii')
             self.buf += bytes([0])
-            self.buf += self.types[val['type']]['idx'].to_bytes(
+            dcount = len(val['value'])
+            outtype = self.types[val['type']]['idx']
+            if dcount != 1:
+                outtype |= self.type_array_flag
+
+            self.buf += outtype.to_bytes(
                 self.constants['TYPE_SIZE'],
                 signed=False,
                 byteorder='little'
             )
+
+
             if val['type'] == 'blob':
-                self.buf += len(val['val_bytes']).to_bytes(
+                self.buf += len(val['val_bytes'][0]).to_bytes(
                     self.constants['SIZE_SIZE'],
                     signed=False,
                     byteorder='little'
                 )
-                self.buf += val['val_bytes']
-            elif val['type'] == 'float':
-                print('val',val['value'])
-                self.buf += struct.pack('f',val['value'])
-            elif val['type'] == 'double':
-                self.buf += struct.pack('d',val['value'])
-            else:
-                self.buf += val['value'].to_bytes(
-                    self.types[val['type']]['size'],
-                    signed=self.types[val['type']]['signed'],
-                    byteorder='little')
+            if dcount != 1:
+                self.buf += dcount.to_bytes(
+                    self.constants['COUNT_SIZE'],
+                    signed=False,
+                    byteorder='little'
+                )
+
+            for didx in range(dcount):
+                if val['type'] == 'blob':
+                    self.buf += val['val_bytes'][didx]
+                elif val['type'] == 'float':
+                    print('val',val['value'][didx])
+                    self.buf += struct.pack('f',val['value'][didx])
+                elif val['type'] == 'double':
+                    self.buf += struct.pack('d',val['value'][didx])
+                else:
+                    self.buf += val['value'][didx].to_bytes(
+                        self.types[val['type']]['size'],
+                        signed=self.types[val['type']]['signed'],
+                        byteorder='little')
+
         self._byteAssign('HD_OFFSET','HD_SIZE',self.constants['ID_VAL'])
         self._byteAssign('VS_OFFSET','VS_SIZE',len(self.buf) - self.constants['V_OFFSET'])
         return self.buf
@@ -170,6 +194,9 @@ class sdb:
             name = self._readNullTermString(idx)
             idx += len(name) + 1 # null terminator
             type_idx = self._bytesToInt(self.buf[idx:idx+self.constants['TYPE_SIZE']])
+            is_arry = type_idx & self.type_array_flag
+            type_idx &= ~self.type_array_flag
+
             type_name = self.type_names[type_idx]
             idx += self.constants['TYPE_SIZE']
             if type_name == 'blob':
@@ -178,21 +205,33 @@ class sdb:
             else:
                 dsize = self.types[type_name]['size']
 
-            data_bytes = self.buf[idx:idx+dsize] 
-            if type_name == 'blob':
-                data_val = None
-            elif type_name == 'float':
-                temp0 = struct.unpack('f',data_bytes)
-                data_val = temp0[0] 
-            elif type_name == 'double':
-                temp1 = struct.unpack('d',data_bytes)
-                data_val = temp1[0] 
-            else:
-                data_val = self._bytesToInt(data_bytes,self.types[type_name]['signed'])
-            idx += dsize
+            dcount = 1
+            if is_arry:
+                dcount = self._bytesToInt(self.buf[idx:idx+self.constants['COUNT_SIZE']])
+                idx += self.constants['COUNT_SIZE']
+
+            data_vals = []
+            data_bytes = []
+            datum_val = None
+            for didx in range(dcount):
+                datum_bytes = self.buf[idx:idx+dsize] 
+                if type_name == 'blob':
+                    datum_val = None
+                elif type_name == 'float':
+                    temp0 = struct.unpack('f',datum_bytes)
+                    datum_val = temp0[0] 
+                elif type_name == 'double':
+                    temp1 = struct.unpack('d',datum_bytes)
+                    datum_val = temp1[0] 
+                else:
+                    datum_val = self._bytesToInt(datum_bytes,self.types[type_name]['signed'])
+                data_vals.append(datum_val)
+                data_bytes.append(datum_bytes)
+                idx += dsize
+
             rv[name] = {
                 'type': type_name or None,
-                'value': data_val,
+                'value': data_vals,
                 'val_bytes': data_bytes,
             }
         self.vals = rv;
@@ -252,7 +291,7 @@ class BytesEncoder(json.JSONEncoder):
 
 if __name__ == '__main__':
 
-    for inname in ['t0','t1','t2']:
+    for inname in ['t0','t1','t2','t3']:
         s = sdb()
         s.initFromFile('../c/' + inname + '.dat')
         s.debug()
@@ -262,5 +301,4 @@ if __name__ == '__main__':
         t.initFromBytes(old_bytes)
         t.debug()
         t.saveToFile(inname + '_py2.dat')
-
         print(json.dumps(t.getValues(),sort_keys=True, indent=4,cls=BytesEncoder))

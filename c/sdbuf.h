@@ -42,10 +42,12 @@ typedef enum sdb_errors_t {
     SDB_OK = 0,
     SDB_BUFFER_TOO_SMALL,
     SDB_DIFFERENT_TYPE,
+    SDB_DIFFERENT_COUNT,
     SDB_NOT_FOUND,
     SDB_DIFFERENT_SIZE,
     SDB_NAME_TOO_LONG,
     SDB_WRONG_VERSION,
+    SDB_BAD_HANDLE,
 } sdb_errors_t;
 
 typedef struct sdb_t {
@@ -55,20 +57,40 @@ typedef struct sdb_t {
     sdb_len_t vals_size;
 } sdb_t;
 
-// initialize the struct with the target buffer, optionally
-// zero it out
+typedef struct sdb_member_info_t {
+    uint8_t    *handle;
+    const char *name;
+    sdbtypes_t type;
+    sdb_len_t  elemsize;
+    sdb_len_t  elemcount;
+    size_t     minsize;
+} sdb_member_info_t;
+
+// initialize the struct with the target buffer, optionally zero it out
 int8_t   sdb_init     (sdb_t *sdb, void *b, const sdb_len_t l, bool clear);
 
-// total size of blob
+// obtain total size of blob
 sdb_len_t sdb_size    (sdb_t *sdb);
 
-// setter getter for ints
-int8_t   sdb_add_int  (sdb_t *sdb, const char *name, const sdbtypes_t type, const void *data);
-int8_t   sdb_get_int  (sdb_t *sdb, const char *name, sdbtypes_t *type, void *data);
+// setters for standard types:
+// .. an array
+int8_t   sdb_add_vala (sdb_t *sdb, const char *name,
+                       const sdbtypes_t type, const sdb_len_t count, const void *data);
+// .. or just one
+int8_t   sdb_add_val  (sdb_t *sdb, const char *name,
+                       const sdbtypes_t type, const void *data);
 
-// setter getter for blobs
-int8_t   sdb_add_blob (sdb_t *sdb, const char *name, const void *ib, const sdb_len_t ilen);
-int8_t   sdb_get_blob (sdb_t *sdb, const char *name, const sdb_len_t omax, void *ob, sdb_len_t *olen);
+// getters. Getting is always a two-step process:
+// First: "find" the item by name.
+int8_t   sdb_find(sdb_t *sdb, const char *name, sdb_member_info_t *about);
+// Then: "get" the data.find an object and report about it. The "sdb_member_info_t"
+// struct has the elements you need to know if the find worked, as well
+// as size the receiving buffer appropriately.
+int8_t   sdb_get      (const sdb_member_info_t *about, void *data);
+
+// setter for blobs
+int8_t   sdb_add_blob (sdb_t *sdb, const char *name, 
+                       const void *ib, const sdb_len_t isize);
 
 // dumper
 void     sdb_debug    (sdb_t *sdb);

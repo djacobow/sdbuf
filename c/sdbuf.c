@@ -3,12 +3,15 @@
 #include <inttypes.h>
 #include "sdbuf.h"
 
-#define SDB_VS_SZ     (sizeof(sdb_len_t))
-#define SDB_HD_SZ     (sizeof(sdb_hdr_t))
-#define SDB_HD_OFFSET (0)
-#define SDB_VS_OFFSET (SDB_HD_OFFSET+SDB_HD_SZ)
-#define SDB_V_OFFSET  (SDB_VS_OFFSET+SDB_VS_SZ)
-#define SDB_BLOB_T_SZ (sizeof(sdb_len_t))
+#define SDB_VS_SZ      (sizeof(sdb_len_t))
+#define SDB_HD_SZ      (sizeof(sdb_hdr_t))
+#define SDB_HD_OFFSET  (0)
+#define SDB_VS_OFFSET  (SDB_HD_OFFSET+SDB_HD_SZ)
+#define SDB_V_OFFSET   (SDB_VS_OFFSET+SDB_VS_SZ)
+#define SDB_BLOB_T_SZ  (sizeof(sdb_len_t))
+#define SDB_COUNT_T_SZ (sizeof(sdb_len_t))
+#define SDB_ARRAY_T_FLAG (0x80)
+
 
 // Struct description:
 //
@@ -113,7 +116,10 @@ void sdb_debug(sdb_t *sdb) {
         p += valnamelen + 1;
         sdbtypes_t type = _SDB_INVALID_TYPE;
         memcpy(&type,p,sizeof(sdbtypes_t));
+        uint8_t is_array = type & SDB_ARRAY_T_FLAG;
+        type &= ~SDB_ARRAY_T_FLAG;
         p += sizeof(sdbtypes_t);
+        sdb_len_t count = 1;
         sdb_len_t dsize = 0;
         sdb_val_t d;
         d.u64 = 0;
@@ -122,28 +128,37 @@ void sdb_debug(sdb_t *sdb) {
             p += SDB_BLOB_T_SZ;
         } else {
             dsize = sdbtype_sizes[type];
-            memcpy(&d, p, dsize);
         }
-        total_dsize += dsize;
-        p += dsize;
+        if (is_array) {
+            memcpy(&count,p,SDB_COUNT_T_SZ);
+            p += SDB_COUNT_T_SZ;
+        };
+        total_dsize += count * dsize;
 
-        char nstr[30];
-        memset(nstr,0,30);
-        switch (type) {
-            case SDB_S8:     sprintf(nstr,"%d",d.s8); break;
-            case SDB_S16:    sprintf(nstr,"%d",d.s16); break;
-            case SDB_S32:    sprintf(nstr,"%" PRIi32,d.s32); break;
-            case SDB_S64:    sprintf(nstr,"%" PRIi64,d.s64); break;
-            case SDB_U8:     sprintf(nstr,"%u",d.u8); break;
-            case SDB_U16:    sprintf(nstr,"%u",d.u16); break;
-            case SDB_U32:    sprintf(nstr,"%" PRIu32,d.u32); break;
-            case SDB_U64:    sprintf(nstr,"%" PRIu64,d.u64); break;
-            case SDB_FLOAT:  sprintf(nstr,"%f",d.f); break;
-            case SDB_DOUBLE: sprintf(nstr,"%f",d.d); break;
-            case SDB_BLOB:   sprintf(nstr, "%u bytes",dsize); break;
-            default: break;
-        }                 
-        printf("-d- %-16s: %4s : %-20s : 0x%" PRIx64"\n",name, sdbtype_names[type], nstr, type == SDB_BLOB ? dsize : d.u64);
+        for (sdb_len_t i=0; i<count; i++) {
+            sdb_val_t d = {};
+            if (type != SDB_BLOB) {
+                memcpy(&d, p, dsize);
+            }
+            p += dsize;
+            char nstr[30];
+            memset(nstr,0,30);
+            switch (type) {
+                case SDB_S8:     sprintf(nstr,"%d",d.s8); break;
+                case SDB_S16:    sprintf(nstr,"%d",d.s16); break;
+                case SDB_S32:    sprintf(nstr,"%" PRIi32,d.s32); break;
+                case SDB_S64:    sprintf(nstr,"%" PRIi64,d.s64); break;
+                case SDB_U8:     sprintf(nstr,"%u",d.u8); break;
+                case SDB_U16:    sprintf(nstr,"%u",d.u16); break;
+                case SDB_U32:    sprintf(nstr,"%" PRIu32,d.u32); break;
+                case SDB_U64:    sprintf(nstr,"%" PRIu64,d.u64); break;
+                case SDB_FLOAT:  sprintf(nstr,"%f",d.f); break;
+                case SDB_DOUBLE: sprintf(nstr,"%f",d.d); break;
+                case SDB_BLOB:   sprintf(nstr, "%u bytes",dsize); break;
+                default: break;
+            }                 
+            printf("-d- %-16s: %4s : %u/%u : %-20s : 0x%" PRIx64"\n",name, sdbtype_names[type], i, count, nstr, type == SDB_BLOB ? dsize : d.u64);
+        } 
     }
     printf("-d- ---------\n");
     uint32_t overhead_pct = (100 * total_size) / (total_dsize);
@@ -153,7 +168,7 @@ void sdb_debug(sdb_t *sdb) {
 
 };
 
-static uint8_t *sdb_find_internal(sdb_t *sdb, const char *name, sdbtypes_t *ftype, sdb_len_t *dsize) {
+static uint8_t *sdb_find_internal(sdb_t *sdb, const char *name, sdbtypes_t *ftype, sdb_len_t *dsize, sdb_len_t *dcount) {
     sdb_get_sizes(sdb);
     uint8_t *p = (uint8_t *)sdb->buf + SDB_V_OFFSET;
     uint8_t *pfound = 0;
@@ -168,16 +183,22 @@ static uint8_t *sdb_find_internal(sdb_t *sdb, const char *name, sdbtypes_t *ftyp
         p += vallen + 1;
         memcpy(ftype,p,sizeof(sdbtypes_t));
         p += sizeof(sdbtypes_t);
+        uint8_t is_array = (*ftype & SDB_ARRAY_T_FLAG);
+        *ftype &= ~SDB_ARRAY_T_FLAG;
+        
+        *dcount = 1;
         if (*ftype == SDB_BLOB) {
-            sdb_len_t blob_size;
-            memcpy(&blob_size,p,SDB_BLOB_T_SZ);
+            memcpy(dsize,p,SDB_BLOB_T_SZ);
             p += SDB_BLOB_T_SZ;
-            p += blob_size;
-            *dsize = blob_size;
         } else {
             *dsize = sdbtype_sizes[*ftype];
-            p += sdbtype_sizes[*ftype];
         }
+        if (is_array) {
+            memcpy(dcount,p,SDB_COUNT_T_SZ);
+            p += SDB_COUNT_T_SZ;
+        }
+        p += *dcount * *dsize;
+
         if (pfound) {
             return pfound;
         }
@@ -185,56 +206,69 @@ static uint8_t *sdb_find_internal(sdb_t *sdb, const char *name, sdbtypes_t *ftyp
     return NULL;
 }
 
-int8_t sdb_get_int(sdb_t *sdb, const char *name, sdbtypes_t *type, void *data) {
+int8_t sdb_find(sdb_t *sdb, const char *name, sdb_member_info_t *about) {
     sdbtypes_t ftype;
-    sdb_len_t fsize;
-    uint8_t *p = sdb_find_internal(sdb, name, &ftype, &fsize); 
-
+    sdb_len_t dsize;
+    sdb_len_t dcount;
+    uint8_t *p = sdb_find_internal(sdb, name, &ftype, &dsize, &dcount);
     if (p) {
-        if (ftype == SDB_BLOB) {
-            return -SDB_DIFFERENT_TYPE;
-        }
-        uint16_t vallen = strnlen((char *)p,MAX_NAME_LEN+1);
-        p += vallen + 1;
-        memcpy(type,p,sizeof(sdbtypes_t));
-        p += sizeof(sdbtypes_t);
-        sdb_len_t dsize = sdbtype_sizes[*type];
-        memcpy(data,p,dsize);
-        p += dsize;
+        about->handle = p;
+        about->name = (const char *)p;
+        about->type = ftype;
+        about->elemsize = dsize;
+        about->elemcount = dcount;
+        about->minsize = dsize * dcount;
         return SDB_OK;
     }
+    about->handle = NULL;
+    about->name = NULL;
+    about->type = _SDB_INVALID_TYPE;
+    about->elemsize = 0;
+    about->elemcount = 0;
+    about->minsize = 0;
     return -SDB_NOT_FOUND;
 }
 
+int8_t sdb_get(const sdb_member_info_t *abt, void *data) {
+    if (!abt)  return -SDB_BAD_HANDLE;
+    uint8_t *p = abt->handle;
+    if (!p) return -SDB_BAD_HANDLE;
 
-int8_t sdb_get_blob (sdb_t *sdb, const char *name, const sdb_len_t omax, void *ob, sdb_len_t *olen) {
-    sdbtypes_t ftype;
-    sdb_len_t fsize;
-    uint8_t *p = sdb_find_internal(sdb, name, &ftype, &fsize);
-    if (p) {
-        if (ftype != SDB_BLOB) {
-            return -SDB_DIFFERENT_TYPE;
-        }
-        uint16_t namelen = strnlen((const char *)p,MAX_NAME_LEN+1);
-        p += (namelen+1);
-        p += sizeof(sdbtypes_t);
-        sdb_len_t dsize;
+    uint16_t vallen = strnlen((char *)p,MAX_NAME_LEN+1);
+    p += vallen + 1;
+
+    sdbtypes_t type = _SDB_INVALID_TYPE;
+    sdb_len_t dsize = 0;
+    memcpy(&type,p,sizeof(sdbtypes_t));
+    uint8_t is_array = type & SDB_ARRAY_T_FLAG;
+    type &= ~SDB_ARRAY_T_FLAG;
+    p += sizeof(sdbtypes_t);
+    if (type != abt->type) return -SDB_DIFFERENT_TYPE;
+    if (type == SDB_BLOB) {
         memcpy(&dsize,p,SDB_BLOB_T_SZ);
         p += SDB_BLOB_T_SZ;
-        *olen = dsize; // set olen even if does not fit
-        if (dsize > omax) {
-            return -SDB_BUFFER_TOO_SMALL;
-        }
-        memcpy(ob,p,dsize);
-        return SDB_OK;
+    } else {
+        dsize = sdbtype_sizes[type];
     }
-    return -SDB_NOT_FOUND;
+    if (dsize != abt->elemsize) return -SDB_DIFFERENT_SIZE;
+
+    sdb_len_t dcount = 1;
+    if (is_array) {
+        memcpy(&dcount,p,SDB_COUNT_T_SZ);
+        p += SDB_COUNT_T_SZ;
+    }
+    if (dcount != abt->elemcount) return -SDB_DIFFERENT_COUNT;
+
+    memcpy(data, p, dsize * dcount);
+    return SDB_OK;
 }
 
 int8_t sdb_add_blob (sdb_t *sdb, const char *name, const void *ib, const sdb_len_t ilen) {
     sdbtypes_t ftype;
     sdb_len_t fsize;
-    uint8_t *pfound = sdb_find_internal(sdb,name,&ftype,&fsize);
+    sdb_len_t fcount;
+    char *fname = NULL;
+    uint8_t *pfound = sdb_find_internal(sdb,name,&ftype,&fsize,&fcount);
 
     if (pfound) {
         if (ftype != SDB_BLOB) {
@@ -279,15 +313,24 @@ int8_t sdb_add_blob (sdb_t *sdb, const char *name, const void *ib, const sdb_len
 }
 
 
-int8_t sdb_add_int(sdb_t *sdb, const char *name, const sdbtypes_t type, const void *data) {
+int8_t sdb_add_val(sdb_t *sdb, const char *name, const sdbtypes_t type, const void *data) {
+    return sdb_add_vala(sdb,name,type,1,data);
+}
+
+int8_t sdb_add_vala(sdb_t *sdb, const char *name, const sdbtypes_t type, const sdb_len_t count, const void *data) {
     sdbtypes_t ftype;
     sdb_len_t fsize;
-    uint8_t *pfound = sdb_find_internal(sdb,name,&ftype,&fsize);
+    sdb_len_t fcount;
+    uint8_t *pfound = sdb_find_internal(sdb,name,&ftype,&fsize,&fcount);
+    uint8_t is_array = count != 1;
 
     if (pfound) {
         if (ftype != type) {
             // can't rewrite value if type not the same
             return -SDB_DIFFERENT_TYPE;
+        }
+        if (fcount != count) {
+            return -SDB_DIFFERENT_COUNT;
         }
     }
 
@@ -299,7 +342,8 @@ int8_t sdb_add_int(sdb_t *sdb, const char *name, const sdbtypes_t type, const vo
             return -SDB_NAME_TOO_LONG;
         }
         sdb_len_t dsize = sdbtype_sizes[type];
-        sdb_len_t bytes_needed = (namelen+1) + sizeof(type) + dsize;
+        sdb_len_t bytes_needed = (namelen+1) + sizeof(type) + count * dsize;
+        if (is_array) bytes_needed += SDB_COUNT_T_SZ;
         sdb_len_t bytes_avail  = sdb->len - sdb->vals_size - SDB_V_OFFSET;
         if (bytes_avail < bytes_needed) {
             return -SDB_BUFFER_TOO_SMALL;
@@ -311,12 +355,21 @@ int8_t sdb_add_int(sdb_t *sdb, const char *name, const sdbtypes_t type, const vo
     uint16_t namelen = strnlen(name,MAX_NAME_LEN+1);
     strcpy((char *)ptarget,name);
     ptarget += namelen + 1;
-    memcpy(ptarget,&type,sizeof(type));
+    sdbtypes_t stype = type;
+    if (is_array) {
+        stype |= SDB_ARRAY_T_FLAG;
+    }
+    memcpy(ptarget,&stype,sizeof(type));
     ptarget += sizeof(type);
+    if (is_array) {
+        memcpy(ptarget,&count,SDB_COUNT_T_SZ);
+        ptarget += SDB_COUNT_T_SZ;
+    }
     sdb_len_t dsize = sdbtype_sizes[type];
-    memcpy(ptarget, data, dsize);
+    memcpy(ptarget, data, count * dsize);
     if (!pfound) {
-        sdb->vals_size += (namelen+1) + sizeof(type) + dsize;
+        sdb->vals_size += (namelen+1) + sizeof(type) + count * dsize;
+        if (is_array) sdb->vals_size += SDB_COUNT_T_SZ;
         memcpy((uint8_t *)sdb->buf + SDB_VS_OFFSET, &sdb->vals_size, SDB_VS_SZ);
     }
     return SDB_OK;

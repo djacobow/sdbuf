@@ -29,8 +29,9 @@ Following the header are zero or more data records that look like this:
 |field|size|description|
 |---|---|---|
 |name |n+1 B |A null-terminated string of length n that represent the datum's name |
-|type |1B |A one byte field indicating the type of the data to follow. Supported types are `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t`, and `blob`. Blob indicates just a buffer of bytes |
+|type |1B |A one byte field indicating the type of the data to follow. Supported types are `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`, `uint32_t`, `int64_t`, `uint64_t`, and `blob`. Blob indicates just a buffer of bytes. If the upper bit (`0x80`) is set, that indicates that an array follows. |
 |size |0 or 2B |most data types do not have this field, but if the type is `blob`, then this field indicates the length of the data to follow |
+[count|0 or 2B |If the ubber bit of type is a 1, this field will be present, indicating the number of datums to follow, otherwise, this fields is empty and exactly one datum is expected |
 |data |as indicated by type or size field |0-n B of data. If any of the integer types, this is stored little-endian. |
 
 
@@ -51,24 +52,41 @@ sdb_t mydb;
 int8_t fail = sdb_init(&mydb, buf, buf_len, false);
 
 // now you can read the data:
-sdbtypes_t found_type;
-uint8_t fdata[8];
-int8_t found = sdb_get_int(&sdb, "foo", &found_type, &fdata);
-if (found_type == SDB_S16) {
-    int16_t foo = (int16_t)fdata;
+int16_t fdata;
+sdb_member_info_t mi;
+fail  = sdb_find(&sdb, "foo", &mi);
+if (!fail) {
+    if ((mi.type == SDB_S16) && (mi.elemcount == 1)) {
+        fail = sdb_get(&mi, &fdata);
+        if (!fail) {
+            printf("fdata is %s\n",fdata);
+    }
 }
  ```
-The maximum size int it 8B, so we allocate a buffer of that size to hold whatever comes. If we are confident that the size will be smaller, we can use a smaller buffer, but this is safest. You can cast over to the size that matches once you know what it is. If the data was not found, then `found` will have been set to an error code.
 
-If you want to read a blob out of an `sdb` buffer, the procedure is basically the same:
+Note that this is a two-step process. The `sdb_find` call looks for the named item,
+and fills in a data structure which contains info you can use to make sure the 
+type is what you expected and that you have a large enough buffer to receive the
+entire payload. If `sdb_find` does not find the key in question, an appropriate
+error will be returned.
+
+Assuming all is ok, then you can call `sdb_get` which will copy over the data
+to a receiving buffer.
+
+If you want to read a blob out of an `sdb` buffer, the procedure is exactly the same:
 ```C
 const size_t target_size = 512;
 uint8_t target[target_size];
-size_t actual_size = 0;
-int8_t found = sdb_get_blob(&sdb, "bar", target_size, target, &actual_size);
+sdb_member_info_t mi;
+int8_t fail = sdb_find(&sdb, "bar", &mi);
+if (!fail) {
+    if (mi.minsize <= target_size) {
+        fail = sdb_get(&mi, target);
+    }
+}
 ```
 
-If the data will not fit in the provided buffer, and appropriate error code is returned and no data is copied. However, the actual size is set, so you can reallocate your buffer as necessary.
+`sdb_get` has no way of knowing how big your buffer is, so it is incumbent on you to check that the result will fit, before you call it.
 
 Creating a buffer for transmission is similarly simple:
 ```C
@@ -77,8 +95,11 @@ sdb_t osdb;
 sdb_init(&osdb,buf,512,true);
 
 int8_t my_s8 = -11;
-int8_t sdb_add_int(&sdb, "baz", SDB_S8, &my_s8);
+int8_t sdb_add_val(&sdb, "baz", SDB_S8, &my_s8);
 ```
+
+You can also use `sdb_add_vala` to an array of same type.
+
 When you have added everything you want to add, you can simply get the size of the buffer used and transmit the original buffer you gave to `sdb_init`:
 
 ```C
@@ -87,8 +108,8 @@ some_sending_function(sdb.buf, buf_used);
 ```
 
 A few caveats for the C implementation:
-- if you do an add of a name already existing in the buffer, with the same type, the value will be updated
-- if you do an add of the same name with a different type, you will receive an error message
+- if you do an add of a name already existing in the buffer, with the same type and count, the value will be updated
+- if you do an add of the same name with a different type or count, you will receive an error message
 
 
 ### Now, in Python
@@ -113,6 +134,12 @@ mysdb.set('foo','s32',12345)
 mysdb.setBlob('bar',bytes([1,2,3,4,5]))
 obuff = mysdb.toBytes()
 some_fn_that_sends_data(obuff)
+```
+
+Python can also work with lists:
+```Python
+mysdb.set('baz','s32',[1,2,3,4,5])
+mysdb.setBlob('bleep',[bytes([1,2]),bytes([2,3])])
 ```
 
 
