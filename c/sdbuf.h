@@ -109,6 +109,7 @@ int8_t   sdb_find         (const sdb_t *sdb, sdb_id_t id, sdb_member_info_t *abo
 int8_t   sdb_get          (const sdb_member_info_t *about, void *data);
 
 uint64_t sdb_get_unsigned (const sdb_t *sdb, sdb_id_t id, int8_t *error);
+int64_t  sdb_get_signed   (const sdb_t *sdb, sdb_id_t id, int8_t *error);
 
 // debug dumper
 void     sdb_debug        (sdb_t *sdb);
