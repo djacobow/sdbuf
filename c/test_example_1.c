@@ -9,19 +9,19 @@
 #define BUF_SIZE (2048)
 
 typedef struct test_value_t {
-    const char *name;
+    const uint16_t id;
     sdbtypes_t type;
     sdb_val_t  value;
 } test_value_t;
 
 test_value_t test_values[] = {
-    { .name = "james",  .type = SDB_S16, .value.s16 = 0x55aa, },
-    { .name = "ido",    .type = SDB_U32, .value.u32 = 0x12345678, },
-    { .name = "bud",    .type = SDB_S16, .value.s16 = 0xf00d, },
-    { .name = "jeremy", .type = SDB_U32, .value.u32 = 0xdeadbeef, },
-    { .name = "lewis",  .type = SDB_U64, .value.u64 = 0xaabbccdd99887766ULL, },
-    { .name = "andrew", .type = SDB_S16, .value.s16 = 0xd00f, },
-    { .name = "david",  .type = SDB_S8,  .value.s8 = -12, },
+    { .id = 0x0100, .type = SDB_S16, .value.s16 = 0x55aa, },
+    { .id = 0x0101, .type = SDB_U32, .value.u32 = 0x12345678, },
+    { .id = 0x0102, .type = SDB_S16, .value.s16 = 0xf00d, },
+    { .id = 0x0103, .type = SDB_U32, .value.u32 = 0xdeadbeef, },
+    { .id = 0x0104, .type = SDB_U64, .value.u64 = 0xaabbccdd99887766ULL, },
+    { .id = 0x0105, .type = SDB_S16, .value.s16 = 0xd00f, },
+    { .id = 0x0106, .type = SDB_S8,  .value.s8 = -12, },
 };
 
 int8_t check_ok(const sdb_val_t a, const sdb_val_t b, const sdbtypes_t t) {
@@ -48,38 +48,37 @@ int test_one() {
     show_err(sdb_init(&sdb, buf, BUF_SIZE, true),"init failure");
 
     for (uint8_t i=0;i<(sizeof(test_values) / sizeof(test_values[0]));i++) {
-        show_err(sdb_add_val(&sdb,test_values[i].name,test_values[i].type,&test_values[i].value),"add failed");
+        show_err(sdb_set_val(&sdb,test_values[i].id,test_values[i].type,&test_values[i].value),"add failed");
     }
 
     const char *msg0 = "This is going to be a named blob.";
     show_err(
-        sdb_add_blob(&sdb, "myblob", msg0, strlen(msg0)),
+        sdb_add_blob(&sdb, 0x0201, msg0, strlen(msg0)),
         "add blob failure"
     );
 
     const char *msg1 = "This is a different named blob.";
     show_err(
-        sdb_add_blob(&sdb, "otherblob", msg1, strlen(msg1)),
+        sdb_add_blob(&sdb, 0x0202, msg1, strlen(msg1)),
         "add blob failure"
     );
 
 
     const char *msg2 = "This is some extra stuff";
     show_err(
-        sdb_add_blob(&sdb, "blob3", msg2, strlen(msg2)),
+        sdb_add_blob(&sdb, 0x0203, msg2, strlen(msg2)),
         "add extra failure"
     );
   
     sdb_val_t fdata;
-    sdbtypes_t ftype;
-    const char *search_keys[] = {
-        "andrew","bud","lewis","jeremy", 
+    const uint16_t search_keys[] = {
+        0x105, 0x102, 0x104, 0x0103,
     };
     for (uint8_t i=0;i<(sizeof(search_keys)/sizeof(search_keys[0]));i++) {
-        const char *search_key = search_keys[i];
+        const uint16_t search_key = search_keys[i];
         sdb_val_t correct_answer = {0};
         for (uint8_t j=0;j<(sizeof(test_values)/sizeof(test_values[0]));j++) {
-            if (!strcmp(search_key,test_values[j].name)) {
+            if (search_key != test_values[j].id) {
                 correct_answer = test_values[j].value;
                 break;
             }
@@ -89,40 +88,41 @@ int test_one() {
         int8_t fail = show_err(sdb_find(&sdb, search_key, &mi),"did not find key");
         if (!fail) {
             fail = show_err(sdb_get(&mi,&fdata),"problem fetching data");
-            if (!fail) {
+            if (fail != SDB_OK) {
                 show_err(check_ok(fdata,correct_answer,mi.type),"wrong answer");
             }
         }
     }
 
     uint8_t target[500];
-    uint16_t act_len = 0; 
     sdb_member_info_t mi; 
 
-    show_err(sdb_find(&sdb,"myblob", &mi),"blob not found");
+    show_err(sdb_find(&sdb, 0x201, &mi),"blob 0x201 not found");
     show_err(mi.elemsize != strlen(msg0),"blob length is not correct");
     show_err(sdb_get(&mi,target),"problem fetching");
-    show_err(memcmp(target, msg0, mi.elemsize),"blob does not match");
+    show_err(memcmp(target, msg0, mi.elemsize),"blob 0x201 does not match");
 
-    show_err(sdb_find(&sdb,"blob3", &mi),"blob3 not found");
-    show_err(mi.elemsize != strlen(msg2),"blob3 length is not correct");
+    show_err(sdb_find(&sdb, 0x203, &mi),"blob3 0x203 not found");
+    show_err(mi.elemsize != strlen(msg2),"blob 0x203 length is not correct");
     show_err(sdb_get(&mi,target),"problem fetching");
-    show_err(memcmp(target, msg2, mi.elemsize),"blob3 does not match");
+    show_err(memcmp(target, msg2, mi.elemsize),"blob 0x203 does not match");
 
-    // update bud, it should work
     int16_t s16 = 1001;
-    show_err(sdb_add_val(&sdb,"bud",SDB_S16, &s16),"change bud failed");
+    show_err(sdb_set_val(&sdb, 0x102, SDB_S16, &s16),"change 0x102 failed");
     fdata.u64 = 0;
-    show_err(sdb_find(&sdb,"bud",&mi),"could not find \"bud\"");
-    show_err(sdb_get(&mi,&fdata),"could not update bud");
-    show_err(fdata.s16 != 1001,"bud not correct");
+    show_err(sdb_find(&sdb, 0x102, &mi),"could not find 0x102");
+    show_err(sdb_get(&mi,&fdata),"could not get 0x102");
+    show_err(fdata.s16 != 1001,"0x102 not correct");
 
-    // update david, but different type. should fail
+    // update but different type
     uint32_t u32 = 0x1a2b3c4d;    
-    show_err(!sdb_add_val(&sdb,"david",SDB_U32, &u32),"change david should fail");
+    show_err(sdb_set_val(&sdb, 0x106,SDB_U32, &u32),"failed to update 0x106");
+    show_err(sdb_find(&sdb, 0x106, &mi),"0x106 not found");
+    show_err(sdb_get(&mi,&fdata),"could read 0x106");
+    show_err(fdata.u32 != u32, "0x106 not correct");
 
-    // get seymour 
-    show_err(!sdb_find(&sdb,"seymour", &mi),"should not find seymour");
+    // get 0x1000
+    show_err(!sdb_find(&sdb, 0x1000, &mi),"should not find 0x1000");
 
     sdb_debug(&sdb);
     dumpBuffer(sdb.buf,sdb_size(&sdb));
@@ -148,17 +148,9 @@ int test_two() {
     const uint32_t test_elems = 30;    
     for (uint32_t i=0;i<test_elems;i++) {
         sdbtypes_t stype = (sdbtypes_t)(rand() % (uint16_t)_SDB_INVALID_TYPE);
-        bool is_signed = false;
-        if (stype <= SDB_S64) is_signed = true;
 
-        char prename_buf[10];
-        for (uint8_t i=0;i<10;i++) {
-            prename_buf[i] = 'a' + rand() % ('z' - 'a');
-        }
-        prename_buf[5] = 0;
-
-        char name_buf[80];
-        snprintf(name_buf, 80, "%s_%03d_%d.%c", prename_buf, i, stype, is_signed ? 'i' : 'u');
+        uint16_t id = rand() & 0xffff;
+        
         sdb_val_t rint;
         if (stype < SDB_FLOAT) {
             rint.u64 = 0;
@@ -166,10 +158,12 @@ int test_two() {
             rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
             rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
             rint.u64 <<= 16; rint.u64 |= rand() & 0xffff;
+#if SDB_INCL_FLOAT
         } else if (stype == SDB_FLOAT) {
             rint.f = ((float)rand() * (float)rand()) / (float)RAND_MAX;
         } else if (stype == SDB_DOUBLE) {
             rint.d = ((double)rand() * (double)rand()) / (double)RAND_MAX;
+#endif
         }
 
         if (stype == SDB_BLOB) {
@@ -178,9 +172,15 @@ int test_two() {
             for (uint32_t i=0;i<dcount;i++) {
                 tbuf[i] = rand() & 0xff;
             }
-            show_err(sdb_add_blob(&sdb,name_buf, &tbuf, dcount),"add blob failed");
+            show_err(sdb_add_blob(&sdb, id, &tbuf, dcount),"add blob failed");
         } else {
-            show_err(sdb_add_val(&sdb,name_buf,stype,&rint),"add failed");
+#if (!SDB_INCL_FLOAT)
+            if ((stype != SDB_FLOAT) && (stype != SDB_DOUBLE)) {
+#endif
+            show_err(sdb_set_val(&sdb, id, stype,&rint),"add failed");
+#if (!SDB_INCL_FLOAT)
+            }
+#endif
         }
     }
 
@@ -210,47 +210,36 @@ int test_three() {
         int8_t i8 = 0 - 1 - i;
         uint16_t u16 = 1000 + i;
         int32_t i32 = -1000000 - i;
-        char nbuf[10];
-        snprintf(nbuf,10,"v%d.%d",i,0);
-        sdb_add_val(&inner,nbuf,SDB_S8,&i8);
-        snprintf(nbuf,10,"v%d.%d",i,1);
-        sdb_add_val(&inner,nbuf,SDB_U16,&u16);
-        snprintf(nbuf,10,"v%d.%d",i,2);
-        sdb_add_val(&inner,nbuf,SDB_S32,&i32);
-        snprintf(nbuf,10,"outer%d",i);
-        show_err(sdb_add_blob(&outer,nbuf,inner.buf,sdb_size(&inner)),"could not add inner buf as blob");
+        sdb_set_val(&inner, i*16 + 0, SDB_S8,&i8);
+        sdb_set_val(&inner, i*16 + 1, SDB_U16,&u16);
+        sdb_set_val(&inner, i*16 + 2, SDB_S32,&i32);
+        show_err(sdb_add_blob(&outer,i*256,inner.buf,sdb_size(&inner)),"could not add inner buf as blob");
     }
 
     sdb_debug(&outer);
     dumpBuffer(outer.buf,sdb_size(&outer));
 
     for (uint8_t i=2;i<3;i--) {
-        char nbuf[10];
-        snprintf(nbuf,10,"outer%d",i);
         sdb_member_info_t mi;
-        show_err(sdb_find(&outer,nbuf,&mi),"sub blob not found");
-        uint8_t ibuf[512];
+        show_err(sdb_find(&outer, i*256, &mi),"sub blob not found");
+        uint8_t ibuf[512] = {};
         show_err(sdb_get(&mi,ibuf),"sub blob not found");
 
-        sdb_t inner;
-        show_err(sdb_init(&inner,ibuf,mi.elemsize,false),"init err");
+        sdb_t inner = {};
+        show_err(sdb_init(&inner, ibuf, mi.elemsize, false),"init err");
         sdb_debug(&inner);
         dumpBuffer(inner.buf,sdb_size(&inner));
         sdb_val_t val;
-        sdbtypes_t rtype;
 
-        snprintf(nbuf,10,"v%d.%d",i,0);
-        show_err(sdb_find(&inner,nbuf,&mi),"not found");
+        show_err(sdb_find(&inner, i*16 + 0, &mi),"not found");
         show_err(sdb_get(&mi,&val),"not found");
         show_err(val.s8 != 0 -1 -i, "wrong value");
 
-        snprintf(nbuf,10,"v%d.%d",i,1);
-        show_err(sdb_find(&inner,nbuf,&mi),"not found");
+        show_err(sdb_find(&inner, i*16 + 1, &mi),"not found");
         show_err(sdb_get(&mi,&val),"not found");
         show_err(val.u16 != 1000 + i, "wrong value");
 
-        snprintf(nbuf,10,"v%d.%d",i,2);
-        show_err(sdb_find(&inner,nbuf,&mi),"not found");
+        show_err(sdb_find(&inner, i*16 + 2, &mi),"not found");
         show_err(sdb_get(&mi,&val),"not found");
         show_err(val.s32 != -1e6 - i, "wrong value");
     }
@@ -275,9 +264,9 @@ int test_four() {
         i16[i] = -i*1000;
         u32[i] = i*1000000;
     }
-    show_err(sdb_add_vala(&s, "bloop", SDB_U8, alen, u8),"could not add u8 arry");
-    show_err(sdb_add_vala(&s, "bleep", SDB_S16, alen, i16),"could not add i16 arry");
-    show_err(sdb_add_vala(&s, "blorp", SDB_U32, alen, u32),"could not add u32 arry");
+    show_err(sdb_set_vala(&s, 0x1000, SDB_U8,  alen, u8), "could not add u8 arry");
+    show_err(sdb_set_vala(&s, 0x1001, SDB_S16, alen, i16),"could not add i16 arry");
+    show_err(sdb_set_vala(&s, 0x1002, SDB_U32, alen, u32),"could not add u32 arry");
 
     sdb_debug(&s);
     dumpBuffer(s.buf,sdb_size(&s));
@@ -289,11 +278,57 @@ int test_four() {
     return getErrors();
 };
 
+int test_five() {
+    sdb_t s;
+    uint8_t obuf[BUF_SIZE];
+    show_err(sdb_init(&s, obuf, BUF_SIZE, true),"could not init top buf");
+
+   
+    sdb_val_t v;
+    v.u8 = 0x11;
+    show_err(sdb_set_val(&s, 0x1000, SDB_U8,  &v), "could not add u8");
+    v.s16 = 0x2222;
+    show_err(sdb_set_val(&s, 0x1001, SDB_S16, &v),"could not add i16");
+    v.u32 = 0x33333333;
+    show_err(sdb_set_val(&s, 0x1002, SDB_U32, &v),"could not add u32");
+    v.u8 = 0x44;
+    show_err(sdb_set_val(&s, 0x2000, SDB_U8,  &v), "could not add u8");
+    v.s16 = 0x5555;
+    show_err(sdb_set_val(&s, 0x2001, SDB_S16, &v),"could not add i16");
+    v.u32 = 0x66666666;
+    show_err(sdb_set_val(&s, 0x2002, SDB_U32, &v),"could not add u32");
+
+    sdb_debug(&s);
+
+    show_err(sdb_remove(&s, 0x1001), "could not remove");;
+    show_err(sdb_remove(&s, 0x2000), "could not remove");;
+    show_err(sdb_remove(&s, 0x2002), "could not remove");;
+
+    sdb_debug(&s);
+
+    dumpBuffer(s.buf,sdb_size(&s));
+
+    FILE *fp = fopen("t5.dat","wb");
+    fwrite(s.buf,1,sdb_size(&s),fp);
+    fclose(fp);
+
+    return getErrors();
+};
+
 
 int main(int argc, char *argv[]) {
-    int32_t rv0 = test_one();
-    int32_t rv1 = test_two();
-    int32_t rv2 = test_three();
-    int32_t rv3 = test_four();
-    return rv0 + rv1 + rv2 + rv3;
+    test_one();
+    test_two();
+    test_three();
+    test_four();
+    test_five();
+
+    uint32_t e = getErrors();
+    if (e) {
+        printf("FAIL! There were %u errors\n", e);
+    } else {
+        printf("YAY! Pass!\n");
+    }
+    return e;
 }
+

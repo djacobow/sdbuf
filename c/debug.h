@@ -10,6 +10,7 @@ extern "C" {
 uint32_t getErrors();
 int8_t show_err(int8_t rv, const char *msg);
 void dumpBuffer(void *b, size_t l);
+void print_backtrace(void);
 
 #ifdef __cplusplus
 }

@@ -8,11 +8,12 @@ class sdb:
     def __init__(self):
         self.buf = bytearray()
         self.constants = {
-            'VER_MAJOR':  0x1,
-            'VER_MINOR':  0x1,
+            'VER_MAJOR':  0x2,
+            'VER_MINOR':  0x0,
             'SIZE_SIZE':  2,
             'COUNT_SIZE': 2,
             'TYPE_SIZE':  1,
+            'KEY_SIZE':   2,
             'HD_SIZE'  :  1,
             'VS_SIZE'  :  2,
             'HD_OFFSET':  0, 
@@ -103,10 +104,9 @@ class sdb:
     def toBytes(self):
         self.buf = bytearray()
         self.buf += bytes(self.constants['V_OFFSET'])
-        for name in self.vals:
-            val = self.vals[name]
-            self.buf += name.encode('ascii')
-            self.buf += bytes([0])
+        for key in self.vals:
+            val = self.vals[key]
+            self.buf += struct.pack('H',key)
             dcount = len(val['value'])
             outtype = self.types[val['type']]['idx']
             if dcount != 1:
@@ -150,8 +150,8 @@ class sdb:
         self._byteAssign('VS_OFFSET','VS_SIZE',len(self.buf) - self.constants['V_OFFSET'])
         return self.buf
 
-    def find(self,name):
-         rv = self.vals.get(name,None)
+    def find(self,key):
+         rv = self.vals.get(key,None)
          if rv is not None:
              return rv['value']
          return None
@@ -191,8 +191,8 @@ class sdb:
         idx = self.constants['V_OFFSET'];
         rv = {};
         while idx < self.vals_size:
-            name = self._readNullTermString(idx)
-            idx += len(name) + 1 # null terminator
+            key, = struct.unpack('H', self.buf[idx:idx+self.constants['KEY_SIZE']])
+            idx += self.constants['KEY_SIZE']
             type_idx = self._bytesToInt(self.buf[idx:idx+self.constants['TYPE_SIZE']])
             is_arry = type_idx & self.type_array_flag
             type_idx &= ~self.type_array_flag
@@ -229,7 +229,7 @@ class sdb:
                 data_bytes.append(datum_bytes)
                 idx += dsize
 
-            rv[name] = {
+            rv[key] = {
                 'type': type_name or None,
                 'value': data_vals,
                 'val_bytes': data_bytes,
@@ -291,7 +291,7 @@ class BytesEncoder(json.JSONEncoder):
 
 if __name__ == '__main__':
 
-    for inname in ['t0','t1','t2','t3']:
+    for inname in ['t0','t1','t2','t3','t5']:
         s = sdb()
         s.initFromFile('../c/' + inname + '.dat')
         s.debug()
