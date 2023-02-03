@@ -4,10 +4,11 @@
 #include "sdbuf.h"
 
 #define SDB_LEN_SZ       (sizeof(sdb_len_t))
+#define SDB_TLEN_SZ      (sizeof(sdb_tlen_t))
 #define SDB_HDR_SZ       (sizeof(sdb_hdr_t))
 #define SDB_HDR_OFFSET   (0)
-#define SDB_LEN_OFFSET   (SDB_HDR_OFFSET+SDB_HDR_SZ)
-#define SDB_VALS_OFFSET  (SDB_LEN_OFFSET+SDB_LEN_SZ)
+#define SDB_TLEN_OFFSET  (SDB_HDR_OFFSET+SDB_HDR_SZ)
+#define SDB_VALS_OFFSET  (SDB_TLEN_OFFSET+SDB_TLEN_SZ)
 #define SDB_BLOB_T_SZ    (sizeof(sdb_len_t))
 #define SDB_COUNT_T_SZ   (sizeof(sdb_len_t))
 #define SDB_ARRAY_T_FLAG (0x80)
@@ -72,10 +73,10 @@ static void sdb_rewrite_sizes(sdb_t *sdb) {
     sdb->vals_size = 0;    
     sdb->header = 0;
     memcpy(&sdb->header,(uint8_t *)sdb->buf + SDB_HDR_OFFSET, SDB_HDR_SZ);
-    memcpy(&sdb->vals_size,(uint8_t *)sdb->buf + SDB_LEN_OFFSET, SDB_LEN_SZ);
+    memcpy(&sdb->vals_size,(uint8_t *)sdb->buf + SDB_TLEN_OFFSET, SDB_TLEN_SZ);
 }
 
-int8_t sdb_init(sdb_t *sdb, void *b, const sdb_len_t l, bool clear) {
+int8_t sdb_init(sdb_t *sdb, void *b, const sdb_tlen_t l, bool clear) {
     sdb->buf = b;
     sdb->len = l;
     if (l < SDB_VALS_OFFSET) {
@@ -270,7 +271,7 @@ static int8_t sdb_remove_internal(sdb_t *sdb, uint8_t *pelem, uint8_t *pnext) {
             size_t rem_len = pend - pnext;
             memmove(pelem, pnext, rem_len);
             sdb->vals_size -= elem_size;
-            memcpy((uint8_t *)sdb->buf + SDB_LEN_OFFSET, &sdb->vals_size, SDB_LEN_SZ);
+            memcpy((uint8_t *)sdb->buf + SDB_TLEN_OFFSET, &sdb->vals_size, SDB_LEN_SZ);
             sdb_rewrite_sizes(sdb);
             return SDB_OK;
         } else {
@@ -309,7 +310,7 @@ int8_t sdb_add_blob (sdb_t *sdb, sdb_id_t id, const void *ib, const sdb_len_t il
     ptarget += ilen;
 
     sdb->vals_size += SDB_ID_SZ + sizeof(type) + SDB_BLOB_T_SZ + ilen;
-    memcpy((uint8_t *)sdb->buf + SDB_LEN_OFFSET, &sdb->vals_size, SDB_LEN_SZ);
+    memcpy((uint8_t *)sdb->buf + SDB_TLEN_OFFSET, &sdb->vals_size, SDB_LEN_SZ);
     sdb_rewrite_sizes(sdb);
     return SDB_OK;
 }
@@ -370,7 +371,7 @@ int8_t sdb_set_vala(sdb_t *sdb, sdb_id_t id, const sdbtypes_t type, const sdb_le
 
     sdb->vals_size += SDB_ID_SZ + sizeof(type) + count * dsize;
     if (is_array) sdb->vals_size += SDB_COUNT_T_SZ;
-    memcpy((uint8_t *)sdb->buf + SDB_LEN_OFFSET, &sdb->vals_size, SDB_LEN_SZ);
+    memcpy((uint8_t *)sdb->buf + SDB_TLEN_OFFSET, &sdb->vals_size, SDB_LEN_SZ);
     sdb_rewrite_sizes(sdb);
     return SDB_OK;
 }

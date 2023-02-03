@@ -15,7 +15,7 @@ class sdb:
             'TYPE_SIZE':  1,
             'KEY_SIZE':   2,
             'HD_SIZE'  :  1,
-            'VS_SIZE'  :  2,
+            'VS_SIZE'  :  4,
             'HD_OFFSET':  0, 
         }
         self.constants['VS_OFFSET'] = (
@@ -167,6 +167,7 @@ class sdb:
                      self.constants['HD_OFFSET']+self.constants['HD_SIZE']
                     ],
         )
+        print(self.buf[self.constants['VS_OFFSET']:self.constants['VS_OFFSET']+self.constants['VS_SIZE']])
         self.vals_size = self._bytesToInt(
             self.buf[self.constants['VS_OFFSET']:
                      self.constants['VS_OFFSET']+self.constants['VS_SIZE']
@@ -190,7 +191,7 @@ class sdb:
         self._getSizes();
         idx = self.constants['V_OFFSET'];
         rv = {};
-        while idx < self.vals_size:
+        while idx < self.vals_size + self.constants['V_OFFSET']:
             key, = struct.unpack('H', self.buf[idx:idx+self.constants['KEY_SIZE']])
             idx += self.constants['KEY_SIZE']
             type_idx = self._bytesToInt(self.buf[idx:idx+self.constants['TYPE_SIZE']])

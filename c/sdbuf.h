@@ -17,7 +17,8 @@ extern "C" {
 
 typedef uint16_t sdb_id_t;
 typedef uint8_t  sdb_hdr_t;
-typedef uint16_t sdb_len_t;
+typedef uint32_t sdb_tlen_t; // for the whole thing
+typedef uint16_t sdb_len_t;  // for items -- limited to 64kB each
 
 // this type is not necessary, but useful as
 // a shorthand convenience when "getting"
@@ -58,9 +59,9 @@ typedef enum sdb_errors_t {
 
 typedef struct sdb_t {
     void *buf;
-    sdb_len_t len;
-    sdb_hdr_t header;
-    sdb_len_t vals_size;
+    sdb_tlen_t len;
+    sdb_hdr_t  header;
+    sdb_tlen_t vals_size;
 } sdb_t;
 
 // this structure is set up by sdb_find and contains
@@ -77,7 +78,7 @@ typedef struct sdb_member_info_t {
 } sdb_member_info_t;
 
 // initialize the struct with the target buffer, optionally zero it out
-int8_t   sdb_init         (sdb_t *sdb, void *b, const sdb_len_t l, bool clear);
+int8_t   sdb_init         (sdb_t *sdb, void *b, const sdb_tlen_t l, bool clear);
 
 // obtain total size of blob. Primary use is if you are about to 
 // transmit or write out the buffer
