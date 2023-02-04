@@ -70,12 +70,13 @@ typedef struct sdb_t {
 // well as info you need to determine the type and
 // size of a found data element
 typedef struct sdb_member_info_t {
-    uint8_t    *handle;
-    sdb_id_t   id;
-    sdbtypes_t type;
-    sdb_len_t  elemsize;
-    sdb_len_t  elemcount;
-    size_t     minsize;
+    const uint8_t *handle;
+    sdb_id_t      id;
+    sdbtypes_t    type;
+    sdb_len_t     elemsize;
+    sdb_len_t     elemcount;
+    size_t        minsize;
+    bool          valid;
 } sdb_member_info_t;
 
 // initialize the struct with the target buffer, optionally zero it out
@@ -103,7 +104,7 @@ int8_t   sdb_add_blob     (sdb_t *sdb, sdb_id_t id, const void *ib, const sdb_le
 // "find" an item by name and set up a member_info_t with a pointer
 // to the object as well as metadata you need to size a receiving
 // buffer
-int8_t   sdb_find         (const sdb_t *sdb, sdb_id_t id, sdb_member_info_t *about);
+sdb_member_info_t sdb_find(const sdb_t *sdb, sdb_id_t id);
 
 // A simple, generic getter. "data" must be large enough to hold
 // the data. Inspect the member_info_t.minsize value to determine

@@ -92,6 +92,13 @@ class sdb:
 
         if name is None:
             raise SDBException('null id key provided')
+
+        if isinstance(name,str):
+            try:
+                name=int(name)
+            except Exception as e:
+                raise SDBException(e)
+
         if not isinstance(name,int) and name <= self.constants['MAX_ID']:
             raise SDBException('invalid id key')
         if typename is None:
@@ -346,35 +353,47 @@ class BytesEncoder(json.JSONEncoder):
 
 if __name__ == '__main__':
 
-    import pprint
+    import argparse
 
-    for inname in ['t0','t1','t2','t3','t5','t6']:
-        s = sdb('../c/' + inname + '.dat')
-        s.saveToFile(inname + '_py1.dat')
-        old_bytes = s.toBytes()
-        t = sdb(old_bytes)
-        t.saveToFile(inname + '_py2.dat')
-        print(json.dumps(t.asDictDetailed(),sort_keys=True, indent=4,cls=BytesEncoder))
-        print('old_bytes', binascii.hexlify(old_bytes))
-        #print('simple_dict', json.dumps(sdb_to_dict(old_bytes), indent=2, sort_keys=True, cls=BytesEncoder))
-        pprint.pprint(sdb_to_dict(old_bytes))
-        s._sdb__dumpBytes(s.buf)
+    def getArgs():
+        parser = argparse.ArgumentParser(description='sdb (simple db) decoder / encoder')
+        g = parser.add_mutually_exclusive_group()
+        g.add_argument(
+            '-e','--encode',
+            help='encode json to sdb',
+            action='store_true',
+        )
+        parser.add_argument(
+            '-f','--file',
+            help='input file',
+            action='store',
+            type=argparse.FileType('rb'),
+        )
+        parser.add_argument(
+            '-o','--output',
+            help='output file',
+            action='store',
+            type=argparse.FileType('wb'),
+            default=None
+        )
 
+        return parser.parse_args()
 
-    d = {
-        1: 11,
-        2: -222,
-        3: 3333,
-        4: -44444,
-        5: -555555,
-        6: 6666666,
-        7: -77777777,
-        8: 888888888,
-        9: -9999999999,
-        10: [ 10, -100, 1000 ],
-    }
-    print(sdb_to_dict(dict_to_sdb(d)))
+    args = getArgs()
+    indata = args.file.read()
+    if args.encode:
+        indata = indata.decode('utf-8')
+        s_bytes = dict_to_sdb(json.loads(indata))
+        if args.output is not None:
+            args.output.write(s_bytes)
+            args.output.close()
+        else:
+            print(binascii.hexlify(s_bytes))
 
-
-
+    else:
+        s_dict = sdb_to_dict(indata)
+        if args.output is not None:
+            args.output.write(json.dumps(s_dict, cls=BytesEncoder).encode('utf-8'))
+        else:
+            print(json.dumps(s_dict, cls=BytesEncoder, indent=2))
 

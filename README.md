@@ -64,8 +64,8 @@ if (SDB_OK == sdb_init(&mydb, buf, buf_len, false)) {
     // of the thing is and you want to be able to deal
     // with it.
     int16_t fdata;
-    sdb_member_info_t mi;
-    if (!sdb_find(&sdb, 0xbeef, &mi)) {
+    sdb_member_info_t mi = sdb_find(&sdb, 0xbeef);
+    if (mi.valid) {
         if ((mi.type == SDB_S16) && (mi.elemcount == 1)) {
             if (!sdb_get(&mi, &fdata)) {
                 printf("fdata is %d\n",fdata);
@@ -83,13 +83,14 @@ Note that in the second case, this is a two-step process. The `sdb_find` call
 looks for the named item, and fills in a data structure which contains info you
 can use to make sure the type is what you expected and that you have a
 large enough buffer to receive the entire payload. If `sdb_find` does not
-find the key in question, an appropriate error will be returned.
+find the key in question, the returned struct will hav the valid bool
+set to false and the handle ptr will be null.
 
 Assuming all is ok, then you can call `sdb_get` which will copy over the data
 to a receiving buffer.
 
 On the other hand, if you use the `sdb_get_unsigned()` or `sdb_get_signed()`,
-you result will be the resturn value and the error parameter (of not null)
+you result will be the return value and the error parameter (of not null)
 will be set if the item was not found or if the type was not compatible with
 the expected return value.
 
@@ -97,8 +98,8 @@ If you want to read a blob out of an `sdb` buffer, the procedure is the same:
 ```C
 const size_t target_size = 512;
 uint8_t target[target_size];
-sdb_member_info_t mi;
-if (!sdb_find(&sdb, 0xf00d, &mi)) {
+sdb_member_info_t mi = sdb_find(&sdb, 0xf00d);
+if (mi.valid) {
     if (mi.minsize <= target_size) {
         if (!sdb_get(&mi, target)) {
             // "target" now has copy of data
@@ -107,7 +108,9 @@ if (!sdb_find(&sdb, 0xf00d, &mi)) {
 }
 ```
 
-`sdb_get` has no way of knowing how big your buffer is, so it is incumbent on you to check that the result will fit, before you call it. All the info you need is in the `sdb_member_info_t`.
+`sdb_get` has no way of knowing how big your buffer is, so it is incumbent
+on you to check that the result will fit, before you call it. All the info
+you need is in the `sdb_member_info_t`.
 
 Creating a buffer for transmission is similarly simple:
 ```C
@@ -121,7 +124,8 @@ int8_t sdb_add_val(&sdb, "baz", SDB_S8, &my_s8);
 
 You can also use `sdb_add_vala` to an array of same type.
 
-When you have added everything you want to add, you can simply get the size of the buffer used and transmit the original buffer you gave to `sdb_init`:
+When you have added everything you want to add, you can simply get the size of
+the buffer used and transmit the original buffer you gave to `sdb_init`:
 
 ```C
 uint16_t buf_used = sdb_size(&osdb);
@@ -141,15 +145,23 @@ import sdbuf
 mysdb = sdbuf.sdb()
 my_bytes = some_fn_that_returns_a_bytes_object()
 mysdb.initFromBytes(my_bytes)
-data = mysdb.getValues()
+data = mysdb.asDict()
+data_dets = mysdb.asDictDetailed()
 ```
+`data` is a dictionary of keys and values. It is usually what you want.
+`data_dets` is a dictionary that contains the decoded data, with a key for each value that will include a `val_bytes` subkey with the raw bytes (useful for blobs) as well as a `value` subkey for decoded integers, and a `type` subkey with the type. Note that python doesn't make a distinction between integer types; `value` will just be a python integer.
 
-`data` is a dictionary that contains the decoded data, with a key for each value that will include a `val_bytes` subkey with the raw bytes (useful for blobs) as well as a `value` subkey for decoded integers, and a `type` subkey with the type. Note that python doesn't make a distinction between integer types; `value` will just be a python integer.
+Even simpler than above, you can do:
+
+```python
+mydict = sdb_to_dict(some_bytes)
+```
 
 Creating an `sdb` buffer is easy, too:
 
 ```Python
 import sdbuf
+
 mysdb = sdbuf.sdb()
 mysdb.set(0xbeef,'s32',12345)
 mysdb.setBlob(0xf00d,bytes([1,2,3,4,5]))
@@ -163,6 +175,10 @@ mysdb.set(0xcafe,'s32',[1,2,3,4,5])
 mysdb.setBlob(0xd00d,[bytes([1,2]),bytes([2,3])])
 ```
 
+Again, there is a shorthand:
+```python
+sdb_bytes = dict_to_sdb({1: 123, 2: [456, 789], 3: bytes([1,2,3]) })
+```
 
 #### Author
 djacobow (Dave Jacobowitz)

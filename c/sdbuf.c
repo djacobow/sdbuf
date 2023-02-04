@@ -205,34 +205,25 @@ static uint8_t *sdb_find_internal(const sdb_t *sdb, sdb_id_t id, sdbtypes_t *fty
     return NULL;
 }
 
-int8_t sdb_find(const sdb_t *sdb, sdb_id_t id, sdb_member_info_t *about) {
-    sdbtypes_t ftype;
-    sdb_len_t dsize;
-    sdb_len_t dcount;
-    uint8_t *next;
-    uint8_t *p = sdb_find_internal(sdb, id, &ftype, &dsize, &dcount, &next);
+sdb_member_info_t sdb_find(const sdb_t *sdb, sdb_id_t id) {
+    sdb_member_info_t mi = {};
+    uint8_t *next = 0;
+    uint8_t *p = sdb_find_internal(sdb, id, &mi.type, &mi.elemsize, &mi.elemcount, &next);
     if (p) {
-        about->handle = p;
-        memcpy((void *)&about->id, &id, SDB_ID_SZ);
-        about->type = ftype;
-        about->elemsize = dsize;
-        about->elemcount = dcount;
-        about->minsize = dsize * dcount;
-        return SDB_OK;
+        mi.handle = p;
+        mi.minsize = mi.elemsize * mi.elemcount;
+        mi.valid = true;
+        return mi;
     }
-    about->handle = NULL;
-    about->id = 0;
-    about->type = _SDB_INVALID_TYPE;
-    about->elemsize = 0;
-    about->elemcount = 0;
-    about->minsize = 0;
-    return -SDB_NOT_FOUND;
+    mi.type = _SDB_INVALID_TYPE;
+    return mi;
 }
 
 int8_t sdb_get(const sdb_member_info_t *abt, void *data) {
     if (!abt)  return -SDB_BAD_HANDLE;
-    uint8_t *p = abt->handle;
+    const uint8_t *p = abt->handle;
     if (!p) return -SDB_BAD_HANDLE;
+    if (!abt->valid) return -SDB_BAD_HANDLE;
 
     p += SDB_ID_SZ;
 
@@ -429,13 +420,14 @@ int8_t sdb_set_signed(sdb_t *sdb, sdb_id_t id, int64_t iv) {
 
 
 uint64_t sdb_get_unsigned(const sdb_t *sdb, sdb_id_t id, int8_t *error) {
-    sdb_member_info_t about;
     uint64_t rv = 0;
     sdb_val_t v =  {};
 
-    int8_t err = sdb_find(sdb, id, &about);
+    sdb_member_info_t about = sdb_find(sdb, id);
 
-    if (err == SDB_OK) {
+    int8_t err = SDB_OK;
+
+    if (about.valid) {
         err = sdb_get(&about, &v);
         if (err == SDB_OK) {
             switch (about.type) {
@@ -447,6 +439,8 @@ uint64_t sdb_get_unsigned(const sdb_t *sdb, sdb_id_t id, int8_t *error) {
                     err = -SDB_DIFFERENT_TYPE;
             }
         }
+    } else {
+        err = -SDB_NOT_FOUND;
     }
 
     if (error) {
@@ -456,13 +450,14 @@ uint64_t sdb_get_unsigned(const sdb_t *sdb, sdb_id_t id, int8_t *error) {
 }
 
 int64_t sdb_get_signed(const sdb_t *sdb, sdb_id_t id, int8_t *error) {
-    sdb_member_info_t about;
     uint64_t rv = 0;
     sdb_val_t v =  {};
 
-    int8_t err = sdb_find(sdb, id, &about);
+    sdb_member_info_t about = sdb_find(sdb, id);
 
-    if (err == SDB_OK) {
+    int8_t err = SDB_OK;
+
+    if (about.valid) {
         err = sdb_get(&about, &v);
         if (err == SDB_OK) {
             switch (about.type) {
@@ -474,6 +469,8 @@ int64_t sdb_get_signed(const sdb_t *sdb, sdb_id_t id, int8_t *error) {
                     err = -SDB_DIFFERENT_TYPE;
             }
         }
+    } else {
+        err = -SDB_NOT_FOUND;
     }
 
     if (error) {

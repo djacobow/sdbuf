@@ -85,10 +85,9 @@ int test_one() {
     for (const auto &sk: search_keys) {
         auto correct_answer = test_values[sk];
         fdata.u64 = 0;
-        sdb_member_info_t mi;
-        int8_t fail = show_err(sdb_find(&sdb, sk, &mi),"did not find key");
-        if (!fail) {
-            fail = show_err(sdb_get(&mi,&fdata),"problem fetching data");
+        auto mi = sdb_find(&sdb, sk);
+        if (!mi.valid) {
+            int8_t fail = show_err(sdb_get(&mi,&fdata),"problem fetching data");
             if (fail != SDB_OK) {
                 show_err(correct_answer.compare(test_value_t(mi.id, mi.type, fdata)), "value mismatch");
             }
@@ -96,14 +95,15 @@ int test_one() {
     }
 
     uint8_t target[500];
-    sdb_member_info_t mi; 
 
-    show_err(sdb_find(&sdb, 0x201, &mi),"blob 0x201 not found");
+    auto mi = sdb_find(&sdb, 0x201);
+    show_err(!mi.valid, "blob not found");
     show_err(mi.elemsize != strlen(msg0),"blob length is not correct");
     show_err(sdb_get(&mi,target),"problem fetching");
     show_err(memcmp(target, msg0, mi.elemsize),"blob 0x201 does not match");
 
-    show_err(sdb_find(&sdb, 0x203, &mi),"blob3 0x203 not found");
+    mi = sdb_find(&sdb, 0x203);
+    show_err(!mi.valid, "blob3 0x203 not found");
     show_err(mi.elemsize != strlen(msg2),"blob 0x203 length is not correct");
     show_err(sdb_get(&mi,target),"problem fetching");
     show_err(memcmp(target, msg2, mi.elemsize),"blob 0x203 does not match");
@@ -111,19 +111,22 @@ int test_one() {
     int16_t s16 = 1001;
     show_err(sdb_set_val(&sdb, 0x102, SDB_S16, &s16),"change 0x102 failed");
     fdata.u64 = 0;
-    show_err(sdb_find(&sdb, 0x102, &mi),"could not find 0x102");
+    mi = sdb_find(&sdb, 0x102);
+    show_err(!mi.valid, "could not find 0x102");
     show_err(sdb_get(&mi,&fdata),"could not get 0x102");
     show_err(fdata.s16 != 1001,"0x102 not correct");
 
     // update but different type
     uint32_t u32 = 0x1a2b3c4d;    
     show_err(sdb_set_val(&sdb, 0x106,SDB_U32, &u32),"failed to update 0x106");
-    show_err(sdb_find(&sdb, 0x106, &mi),"0x106 not found");
+    mi = sdb_find(&sdb, 0x106);
+    show_err(!mi.valid, "0x106 not found");
     show_err(sdb_get(&mi,&fdata),"could read 0x106");
     show_err(fdata.u32 != u32, "0x106 not correct");
 
     // get 0x1000
-    show_err(!sdb_find(&sdb, 0x1000, &mi),"should not find 0x1000");
+    mi = sdb_find(&sdb, 0x1000);
+    show_err(mi.valid, "should not find 0x1000");
 
     sdb_debug(&sdb);
     dumpBuffer(sdb.buf,sdb_size(&sdb));
@@ -221,8 +224,8 @@ int test_three() {
     dumpBuffer(outer.buf,sdb_size(&outer));
 
     for (uint8_t i=2;i<3;i--) {
-        sdb_member_info_t mi;
-        show_err(sdb_find(&outer, i*256, &mi),"sub blob not found");
+        auto mi = sdb_find(&outer, i*256);
+        show_err(!mi.valid, "sub blob not found");
         uint8_t ibuf[512] = {};
         show_err(sdb_get(&mi,ibuf),"sub blob not found");
 
@@ -232,15 +235,18 @@ int test_three() {
         dumpBuffer(inner.buf,sdb_size(&inner));
         sdb_val_t val;
 
-        show_err(sdb_find(&inner, i*16 + 0, &mi),"not found");
+        mi = sdb_find(&inner, i*16 + 0);
+        show_err(!mi.valid, "not found");
         show_err(sdb_get(&mi,&val),"not found");
         show_err(val.s8 != 0 -1 -i, "wrong value");
 
-        show_err(sdb_find(&inner, i*16 + 1, &mi),"not found");
+        mi = sdb_find(&inner, i*16 + 1);
+        show_err(!mi.valid, "not found");
         show_err(sdb_get(&mi,&val),"not found");
         show_err(val.u16 != 1000 + i, "wrong value");
 
-        show_err(sdb_find(&inner, i*16 + 2, &mi),"not found");
+        mi = sdb_find(&inner, i*16 + 2);
+        show_err(!mi.valid, "not found");
         show_err(sdb_get(&mi,&val),"not found");
         show_err(val.s32 != -1e6 - i, "wrong value");
     }
@@ -347,8 +353,8 @@ int test_six() {
     fclose(fp);
 
     for (const auto &e: bm) {
-        sdb_member_info_t mi;
-        if (SDB_OK == show_err(sdb_find(&s, e.first, &mi), "could not find item")) {
+        auto mi = sdb_find(&s, e.first);
+        if (show_err(!mi.valid, "could not find item")) {
             auto tbuf = alloca(mi.minsize);
             show_err(sdb_get(&mi, tbuf), "could not copy data");
             show_err(memcmp(e.second.data(), tbuf, mi.minsize), "data do not match");
@@ -367,8 +373,8 @@ int test_six() {
     show_err(sdb_init(&t, nbuf, nbsize, false),"could not init second buf");
 
     for (const auto &e: bm) {
-        sdb_member_info_t mi;
-        if (SDB_OK == show_err(sdb_find(&s, e.first, &mi), "could not find item (clone)")) {
+        auto mi = sdb_find(&s, e.first);
+        if (show_err(!mi.valid, "could not find item (clone)")) {
             auto tbuf = alloca(mi.minsize);
             show_err(sdb_get(&mi, tbuf), "could not copy data (clone)");
             show_err(memcmp(e.second.data(), tbuf, mi.minsize), "data do not match (clone)");
