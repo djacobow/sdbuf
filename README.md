@@ -22,7 +22,7 @@ All integer values are little-endian, regardless of machine endianness.
 |field|size|description|
 |---|---|---|
 |id|1B|ID header. Consists of a 3b minor version, a 3b major version, and an machine endianness bit|
-|dsize|2B|A `uint16_t` that indicates how many bytes to follow|
+|dsize|4B|A `uint32_t` that indicates how many bytes to follow|
 
 Following the header are zero or more data records that look like this:
 
