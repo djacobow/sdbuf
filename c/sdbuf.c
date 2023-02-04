@@ -160,7 +160,7 @@ void sdb_debug(sdb_t *sdb) {
         } 
     }
     printf("-d- ---------\n");
-    uint32_t overhead_pct = (100 * total_size) / (total_dsize);
+    uint32_t overhead_pct = total_dsize ? (100 * total_size) / (total_dsize) : 0;
     overhead_pct -= 100;
     printf("-d- packed struct would have been: %u bytes. %u%% overhead\n",
         total_dsize, overhead_pct);
@@ -293,9 +293,14 @@ int8_t sdb_add_blob (sdb_t *sdb, sdb_id_t id, const void *ib, const sdb_len_t il
     }
 
     uint8_t *ptarget = (uint8_t *)sdb->buf + SDB_VALS_OFFSET + sdb->vals_size;
-    sdb_len_t bytes_reqd = SDB_ID_SZ + SDB_BLOB_T_SZ + ilen;
-    sdb_len_t bytes_avail = sdb->len - sdb->vals_size - SDB_VALS_OFFSET;
-    if (bytes_avail < bytes_reqd) {
+    sdb_tlen_t bytes_reqd = SDB_ID_SZ + SDB_BLOB_T_SZ + ilen;
+    sdb_tlen_t bytes_avail = sdb->len - sdb->vals_size - SDB_VALS_OFFSET;
+    uint32_t max_item_len = (sdb_tlen_t)(sdb_len_t)(0 - 1);
+    if (bytes_reqd > max_item_len) {
+        return -SDB_ITEM_TOO_BIG;
+    }
+    if (bytes_reqd > bytes_avail) {
+        printf("total len %u vals_size %u avail %u\n", sdb->len, sdb->vals_size, bytes_avail);
         return -SDB_BUFFER_TOO_SMALL;
     }
 
@@ -348,9 +353,13 @@ int8_t sdb_set_vala(sdb_t *sdb, sdb_id_t id, const sdbtypes_t type, const sdb_le
 
     uint8_t *ptarget = ((uint8_t *)sdb->buf + SDB_VALS_OFFSET + sdb->vals_size);
     sdb_len_t dsize = sdbtype_sizes[type];
-    sdb_len_t bytes_needed = SDB_ID_SZ + sizeof(type) + count * dsize;
+    sdb_tlen_t bytes_needed = SDB_ID_SZ + sizeof(type) + count * dsize;
     if (is_array) bytes_needed += SDB_COUNT_T_SZ;
-    sdb_len_t bytes_avail  = sdb->len - sdb->vals_size - SDB_VALS_OFFSET;
+    sdb_tlen_t bytes_avail  = sdb->len - sdb->vals_size - SDB_VALS_OFFSET;
+    uint32_t max_item_len = (sdb_tlen_t)(sdb_len_t)(0 - 1);
+    if (bytes_needed > max_item_len) {
+        return -SDB_ITEM_TOO_BIG;
+    }
     if (bytes_avail < bytes_needed) {
         return -SDB_BUFFER_TOO_SMALL;
     }

@@ -55,6 +55,7 @@ typedef enum sdb_errors_t {
     SDB_WRONG_VERSION,
     SDB_BAD_HANDLE,
     SDB_SCAN_ERROR,
+    SDB_ITEM_TOO_BIG,
 } sdb_errors_t;
 
 typedef struct sdb_t {

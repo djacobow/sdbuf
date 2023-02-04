@@ -5,50 +5,57 @@
 #include <ctype.h>
 #include "debug.h"
 #include "sdbuf.h"
+#include <vector>
+#include <map>
+#include <string>
+#include <random>
 
 #define BUF_SIZE (2048)
 
 typedef struct test_value_t {
-    const uint16_t id;
-    sdbtypes_t type;
-    sdb_val_t  value;
+    public:
+        const uint16_t id;
+        sdbtypes_t type;
+        sdb_val_t  value;
+
+        test_value_t(uint16_t nid, sdbtypes_t ntype, sdb_val_t nval) :
+            id(nid), type(ntype), value(nval) {};
+        bool compare(const test_value_t &ref) {
+            if (type != ref.type) return false;
+            switch (type) {
+                case SDB_S8:  if (value.s8  != ref.value.s8)  return false; break;
+                case SDB_U8:  if (value.u8  != ref.value.u8)  return false; break;
+                case SDB_S16: if (value.s16 != ref.value.s16) return false; break;
+                case SDB_U16: if (value.u16 != ref.value.u16) return false; break;
+                case SDB_S32: if (value.s32 != ref.value.s32) return false; break;
+                case SDB_U32: if (value.u32 != ref.value.u32) return false; break;
+                case SDB_S64: if (value.s64 != ref.value.s64) return false; break;
+                case SDB_U64: if (value.u64 != ref.value.u64) return false; break;
+                default: break;
+            }
+            return true;
+        }
 } test_value_t;
-
-test_value_t test_values[] = {
-    { .id = 0x0100, .type = SDB_S16, .value.s16 = 0x55aa, },
-    { .id = 0x0101, .type = SDB_U32, .value.u32 = 0x12345678, },
-    { .id = 0x0102, .type = SDB_S16, .value.s16 = 0xf00d, },
-    { .id = 0x0103, .type = SDB_U32, .value.u32 = 0xdeadbeef, },
-    { .id = 0x0104, .type = SDB_U64, .value.u64 = 0xaabbccdd99887766ULL, },
-    { .id = 0x0105, .type = SDB_S16, .value.s16 = 0xd00f, },
-    { .id = 0x0106, .type = SDB_S8,  .value.s8 = -12, },
-};
-
-int8_t check_ok(const sdb_val_t a, const sdb_val_t b, const sdbtypes_t t) {
-    int8_t rv = 0;
-    switch (t) {
-        case SDB_S8:  if (a.s8  != b.s8)  rv = -1; break;
-        case SDB_U8:  if (a.u8  != b.u8)  rv = -2; break;
-        case SDB_S16: if (a.s16 != b.s16) rv = -3; break;
-        case SDB_U16: if (a.u16 != b.u16) rv = -4; break;
-        case SDB_S32: if (a.s32 != b.s32) rv = -5; break;
-        case SDB_U32: if (a.u32 != b.u32) rv = -6; break;
-        case SDB_S64: if (a.s64 != b.s64) rv = -7; break;
-        case SDB_U64: if (a.u64 != b.u64) rv = -8; break;
-        default: break;
-    }
-    return rv;
-}
 
 
 int test_one() {
+
+    std::vector<test_value_t> test_values = {
+        test_value_t(0x0100, SDB_S16, sdb_val_t{.s16 = 0x55aa}),
+        test_value_t(0x0101, SDB_U32, sdb_val_t{.u32 = 0x12345678}),
+        test_value_t(0x0102, SDB_S16, sdb_val_t{.s16 = 0x7006}),
+        test_value_t(0x0103, SDB_U32, sdb_val_t{.u32 = 0xdeadbeef}),
+        test_value_t(0x0104, SDB_U64, sdb_val_t{.u64 = 0xaabbccdd99887766ULL}),
+        test_value_t(0x0105, SDB_S16, sdb_val_t{.s16 = 0x6007}),
+        test_value_t(0x0106, SDB_S8,  sdb_val_t{.s8 = -12})
+    };
 
     sdb_t sdb;
     uint8_t buf[BUF_SIZE];
     show_err(sdb_init(&sdb, buf, BUF_SIZE, true),"init failure");
 
-    for (uint8_t i=0;i<(sizeof(test_values) / sizeof(test_values[0]));i++) {
-        show_err(sdb_set_val(&sdb,test_values[i].id,test_values[i].type,&test_values[i].value),"add failed");
+    for (const auto &e: test_values) {
+        show_err(sdb_set_val(&sdb, e.id, e.type, &e.value),"add failed");
     }
 
     const char *msg0 = "This is going to be a named blob.";
@@ -71,25 +78,19 @@ int test_one() {
     );
   
     sdb_val_t fdata;
-    const uint16_t search_keys[] = {
+    const std::vector<uint16_t> search_keys = {
         0x105, 0x102, 0x104, 0x0103,
     };
-    for (uint8_t i=0;i<(sizeof(search_keys)/sizeof(search_keys[0]));i++) {
-        const uint16_t search_key = search_keys[i];
-        sdb_val_t correct_answer = {0};
-        for (uint8_t j=0;j<(sizeof(test_values)/sizeof(test_values[0]));j++) {
-            if (search_key != test_values[j].id) {
-                correct_answer = test_values[j].value;
-                break;
-            }
-        }
+
+    for (const auto &sk: search_keys) {
+        auto correct_answer = test_values[sk];
         fdata.u64 = 0;
         sdb_member_info_t mi;
-        int8_t fail = show_err(sdb_find(&sdb, search_key, &mi),"did not find key");
+        int8_t fail = show_err(sdb_find(&sdb, sk, &mi),"did not find key");
         if (!fail) {
             fail = show_err(sdb_get(&mi,&fdata),"problem fetching data");
             if (fail != SDB_OK) {
-                show_err(check_ok(fdata,correct_answer,mi.type),"wrong answer");
+                show_err(correct_answer.compare(test_value_t(mi.id, mi.type, fdata)), "value mismatch");
             }
         }
     }
@@ -316,18 +317,82 @@ int test_five() {
 };
 
 
+int test_six() {
+    const uint32_t obsize = 100 * 1024;
+    sdb_t s;
+    uint8_t obuf[obsize];
+    memset(obuf, 0xee, obsize);
+    show_err(sdb_init(&s, obuf, obsize, true),"could not init top buf");
+
+    typedef std::map<uint16_t, std::string> blobmap_t;
+    blobmap_t bm;
+
+    uint32_t blob_count = 100;
+    for (uint32_t i=0; i<blob_count; i++) {
+        uint16_t id = i << 8;
+        uint32_t blob_len = rand() & 0x3ff;
+        std::string r = {};
+        r.resize(blob_len);
+        for (uint32_t k=0;k<blob_len;k++) { r[k] = rand() & 0xff; };
+        bm[id] = r;
+        show_err(sdb_add_blob(&s, id, r.data(), r.size()), "could not add blob");
+    }
+
+    sdb_debug(&s);
+
+    dumpBuffer(s.buf,sdb_size(&s));
+
+    FILE *fp = fopen("t6.dat","wb");
+    fwrite(s.buf,1,sdb_size(&s),fp);
+    fclose(fp);
+
+    for (const auto &e: bm) {
+        sdb_member_info_t mi;
+        if (SDB_OK == show_err(sdb_find(&s, e.first, &mi), "could not find item")) {
+            auto tbuf = alloca(mi.minsize);
+            show_err(sdb_get(&mi, tbuf), "could not copy data");
+            show_err(memcmp(e.second.data(), tbuf, mi.minsize), "data do not match");
+        }
+    }
+   
+    fp = fopen("t6.dat", "rb");
+    fseek(fp, 0L, SEEK_END); 
+    size_t nbsize = ftell(fp);
+    void *nbuf = alloca(nbsize);
+    fseek(fp, 0, SEEK_SET);
+    fread(nbuf, 1, nbsize, fp);
+    fclose(fp);
+
+    sdb_t t;
+    show_err(sdb_init(&t, nbuf, nbsize, false),"could not init second buf");
+
+    for (const auto &e: bm) {
+        sdb_member_info_t mi;
+        if (SDB_OK == show_err(sdb_find(&s, e.first, &mi), "could not find item (clone)")) {
+            auto tbuf = alloca(mi.minsize);
+            show_err(sdb_get(&mi, tbuf), "could not copy data (clone)");
+            show_err(memcmp(e.second.data(), tbuf, mi.minsize), "data do not match (clone)");
+        }
+    }
+   
+
+    return getErrors();
+}
+
+
 int main(int argc, char *argv[]) {
     test_one();
     test_two();
     test_three();
     test_four();
     test_five();
+    test_six();
 
     uint32_t e = getErrors();
     if (e) {
-        printf("FAIL! There were %u errors\n", e);
+        printf("FAIL! (%s) There were %u errors\n", argv[0], e);
     } else {
-        printf("YAY! Pass!\n");
+        printf("PASS!  (%s) Yay!\n", argv[0]);
     }
     return e;
 }

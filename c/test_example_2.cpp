@@ -80,9 +80,9 @@ int main(int argc, const char *argv[]) {
     uint32_t errors = 0;
     errors += test_one();
     if (errors) {
-        printf("FAIL. There were %u errors\n", errors);
+        printf("FAIL.  (%s) There were %u errors\n", argv[0], errors);
         return errors;
     }
-    printf("PASS!\n");
+    printf("PASS!  (%s) Yay!\n", argv[0]);
     return 0;
 }
