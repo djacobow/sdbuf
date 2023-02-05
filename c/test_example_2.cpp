@@ -1,13 +1,12 @@
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 #include <random>
 #include <map>
 #include <vector>
 #include <utility>
-#include <stdio.h>
 
 #include "sdbuf.h"
-#include "debug.h"
-
 
 class t1 {
 
