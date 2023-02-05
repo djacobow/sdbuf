@@ -263,19 +263,20 @@ int test_three() {
         sdb_val_t val;
 
         mi = sdb_find(&inner, i*16 + 0);
-        ec.check(!mi.valid, "not found");
-        ec.check(sdb_get(&mi,&val),"not found");
-        ec.check(val.s8 != 0 -1 -i, "wrong value");
+        sdb_show_mi(&mi);
+        ec.check(!mi.valid, "not found A");
+        ec.check(sdb_get(&mi,&val),"get fail A");
+        ec.check(val.s8 != 0 -1 -i, "wrong value A");
 
         mi = sdb_find(&inner, i*16 + 1);
-        ec.check(!mi.valid, "not found");
-        ec.check(sdb_get(&mi,&val),"not found");
-        ec.check(val.u16 != 1000 + i, "wrong value");
+        ec.check(!mi.valid, "not found B");
+        ec.check(sdb_get(&mi,&val),"get fail B");
+        ec.check(val.u16 != 1000 + i, "wrong value B");
 
         mi = sdb_find(&inner, i*16 + 2);
-        ec.check(!mi.valid, "not found");
-        ec.check(sdb_get(&mi,&val),"not found");
-        ec.check(val.s32 != -1e6 - i, "wrong value");
+        ec.check(!mi.valid, "not found C");
+        ec.check(sdb_get(&mi,&val),"get fail  C");
+        ec.check(val.s32 != -1e6 - i, "wrong value C");
     }
     FILE *fp = fopen("t2.dat","wb");
     fwrite(outer.buf,1,sdb_size(&outer),fp);

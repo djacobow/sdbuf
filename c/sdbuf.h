@@ -115,8 +115,8 @@ uint64_t sdb_get_unsigned (const sdb_t *sdb, sdb_id_t id, int8_t *error);
 int64_t  sdb_get_signed   (const sdb_t *sdb, sdb_id_t id, int8_t *error);
 
 // debug dumper
-void     sdb_debug        (sdb_t *sdb);
-
+void     sdb_debug        (const sdb_t *sdb);
+void     sdb_show_mi      (const sdb_member_info_t *mi);
 
 #ifdef __cplusplus
 }

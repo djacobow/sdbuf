@@ -97,7 +97,11 @@ int8_t sdb_init(sdb_t *sdb, void *b, const sdb_tlen_t l, bool clear) {
     return SDB_OK;
 }
 
-void sdb_debug(sdb_t *sdb) {
+void sdb_show_mi(const sdb_member_info_t *mi) {
+    printf("mi: id %04x type %01x size %02x count %04x tsize %08lx handle %p %s\n",
+        mi->id, mi->type, mi->elemsize, mi->elemcount, mi->minsize, mi->handle, mi->valid ? "valid" : "not valid");
+}
+void sdb_debug(const sdb_t *sdb) {
     printf("-d- sdb DEBUG\n");
     printf("-d- ---------\n");
     uint32_t total_size = sdb->vals_size + SDB_VALS_OFFSET;
@@ -168,54 +172,52 @@ void sdb_debug(sdb_t *sdb) {
 };
 
 
-static uint8_t *sdb_find_internal(const sdb_t *sdb, sdb_id_t id, sdbtypes_t *ftype, sdb_len_t *dsize, sdb_len_t *dcount, uint8_t **next) {
+static uint8_t *sdb_find_internal(const sdb_t *sdb, sdb_id_t id, sdb_member_info_t *mi, uint8_t **next) {
     uint8_t *p = (uint8_t *)sdb->buf + SDB_VALS_OFFSET;
     uint8_t *pfound = 0;
     while (!pfound && ((uint8_t *)p < (uint8_t *)sdb->buf + SDB_VALS_OFFSET + sdb->vals_size)) {
-        sdb_id_t rec_id = 0;
-        memcpy(&rec_id, p, SDB_ID_SZ);
-        if (rec_id == id) {
+        memcpy(&mi->id, p, SDB_ID_SZ);
+        if (mi->id == id) {
+            mi->handle = p;
             pfound = p;
         }
         p += SDB_ID_SZ;
-        memcpy(ftype,p,sizeof(sdbtypes_t));
+        memcpy(&mi->type,p,sizeof(sdbtypes_t));
         p += sizeof(sdbtypes_t);
-        uint8_t is_array = (*ftype & SDB_ARRAY_T_FLAG);
-        *ftype &= ~SDB_ARRAY_T_FLAG;
+        bool is_array = mi->type & SDB_ARRAY_T_FLAG;
+        mi->type &= ~SDB_ARRAY_T_FLAG;
         
-        *dcount = 1;
-        if (*ftype == SDB_BLOB) {
-            memcpy(dsize,p,SDB_BLOB_T_SZ);
+        if (mi->type == SDB_BLOB) {
+            memcpy(&mi->elemsize,p,SDB_BLOB_T_SZ);
             p += SDB_BLOB_T_SZ;
         } else {
-            *dsize = sdbtype_sizes[*ftype];
+            mi->elemsize = sdbtype_sizes[mi->type];
         }
+
+        mi->elemcount = 1;
         if (is_array) {
-            memcpy(dcount,p,SDB_COUNT_T_SZ);
+            memcpy(&mi->elemcount,p,SDB_COUNT_T_SZ);
             p += SDB_COUNT_T_SZ;
         }
-        p += *dcount * *dsize;
+
+        mi->minsize = mi->elemcount * mi->elemsize;
+        p += mi->minsize;
 
         if (pfound) {
             *next = p;
+            mi->valid = true;
             return pfound;
         }
     }
     *next = p;
+    mi->type = _SDB_INVALID_TYPE;
     return NULL;
 }
 
 sdb_member_info_t sdb_find(const sdb_t *sdb, sdb_id_t id) {
     sdb_member_info_t mi = {};
     uint8_t *next = 0;
-    uint8_t *p = sdb_find_internal(sdb, id, &mi.type, &mi.elemsize, &mi.elemcount, &next);
-    if (p) {
-        mi.handle = p;
-        mi.minsize = mi.elemsize * mi.elemcount;
-        mi.valid = true;
-        return mi;
-    }
-    mi.type = _SDB_INVALID_TYPE;
+    sdb_find_internal(sdb, id, &mi, &next);
     return mi;
 }
 
@@ -273,11 +275,9 @@ static int8_t sdb_remove_internal(sdb_t *sdb, uint8_t *pelem, uint8_t *pnext) {
 }
 
 int8_t sdb_add_blob (sdb_t *sdb, sdb_id_t id, const void *ib, const sdb_len_t ilen) {
-    sdbtypes_t ftype;
-    sdb_len_t fsize;
-    sdb_len_t fcount;
     uint8_t *next;
-    uint8_t *pfound = sdb_find_internal(sdb, id, &ftype, &fsize, &fcount, &next);
+    sdb_member_info_t mi = {};
+    uint8_t *pfound = sdb_find_internal(sdb, id, &mi, &next);
 
     if (pfound) {
         sdb_remove_internal(sdb, pfound, next);
@@ -315,11 +315,9 @@ int8_t sdb_add_blob (sdb_t *sdb, sdb_id_t id, const void *ib, const sdb_len_t il
 
 
 int8_t sdb_remove(sdb_t *sdb, sdb_id_t id) {
-    sdbtypes_t  ftype;
-    sdb_len_t   dsize;
-    sdb_len_t   dcount;
-    uint8_t    *next;
-    uint8_t *p = sdb_find_internal(sdb, id, &ftype, &dsize, &dcount, &next);
+    uint8_t    *next = 0;
+    sdb_member_info_t mi = {};
+    uint8_t *p = sdb_find_internal(sdb, id, &mi, &next);
     if (p) {
         return sdb_remove_internal(sdb, p, next);
     }
@@ -331,11 +329,9 @@ int8_t sdb_set_val(sdb_t *sdb, sdb_id_t id, const sdbtypes_t type, const void *d
 }
 
 int8_t sdb_set_vala(sdb_t *sdb, sdb_id_t id, const sdbtypes_t type, const sdb_len_t count, const void *data) {
-    sdbtypes_t ftype;
-    sdb_len_t fsize;
-    sdb_len_t fcount;
     uint8_t *next;
-    uint8_t *pfound = sdb_find_internal(sdb, id, &ftype, &fsize, &fcount, &next);
+    sdb_member_info_t mi = {};
+    uint8_t *pfound = sdb_find_internal(sdb, id, &mi, &next);
     uint8_t is_array = count != 1;
 
     if (pfound) {
