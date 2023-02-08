@@ -67,11 +67,11 @@ class sdb:
 
     def __init__(self, input: bytes|bytearray|str|dict|None):
         self.buf = bytearray()
+        self.vals = {}
 
         if input is None:
             pass
         elif isinstance(input, dict):
-            self.vals = {}
             self.fromDict(input)
         elif isinstance(input, str):
             try:

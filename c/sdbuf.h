@@ -75,7 +75,7 @@ typedef struct sdb_member_info_t {
     sdbtypes_t    type;
     sdb_len_t     elemsize;
     sdb_len_t     elemcount;
-    size_t        minsize;
+    sdb_tlen_t    minsize;
     bool          valid;
 } sdb_member_info_t;
 
@@ -117,6 +117,9 @@ int64_t  sdb_get_signed   (const sdb_t *sdb, sdb_id_t id, int8_t *error);
 // debug dumper
 void     sdb_debug        (const sdb_t *sdb);
 void     sdb_show_mi      (const sdb_member_info_t *mi);
+
+bool     sdb_is_signed    (sdbtypes_t t);
+bool     sdb_is_unsigned  (sdbtypes_t t);
 
 #ifdef __cplusplus
 }

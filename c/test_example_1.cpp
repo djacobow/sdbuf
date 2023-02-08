@@ -39,15 +39,15 @@ void dump(void *p, uint32_t l) {
     }
     printf("\n");
 }
-typedef struct test_value_t {
+class test_value_t {
     public:
-        const uint16_t id;
         sdbtypes_t type;
         sdb_val_t  value;
 
-        test_value_t(uint16_t nid, sdbtypes_t ntype, sdb_val_t nval) :
-            id(nid), type(ntype), value(nval) {};
-        bool compare(const test_value_t &ref) {
+        test_value_t(sdbtypes_t ntype, sdb_val_t nval) :
+            type(ntype), value(nval) {};
+
+        bool compare(const test_value_t &ref) const {
             if (type != ref.type) return false;
             switch (type) {
                 case SDB_S8:  if (value.s8  != ref.value.s8)  return false; break;
@@ -62,19 +62,19 @@ typedef struct test_value_t {
             }
             return true;
         }
-} test_value_t;
+};
 
 
 int test_one() {
 
-    std::vector<test_value_t> test_values = {
-        test_value_t(0x0100, SDB_S16, sdb_val_t{.s16 = 0x55aa}),
-        test_value_t(0x0101, SDB_U32, sdb_val_t{.u32 = 0x12345678}),
-        test_value_t(0x0102, SDB_S16, sdb_val_t{.s16 = 0x7006}),
-        test_value_t(0x0103, SDB_U32, sdb_val_t{.u32 = 0xdeadbeef}),
-        test_value_t(0x0104, SDB_U64, sdb_val_t{.u64 = 0xaabbccdd99887766ULL}),
-        test_value_t(0x0105, SDB_S16, sdb_val_t{.s16 = 0x6007}),
-        test_value_t(0x0106, SDB_S8,  sdb_val_t{.s8 = -12})
+    std::map<sdb_id_t, const test_value_t> test_values = {
+        { 0x100, test_value_t(SDB_S16, sdb_val_t{.s16 = 0x55aa}), },
+        { 0x101, test_value_t(SDB_U32, sdb_val_t{.u32 = 0x12345678}), },
+        { 0x102, test_value_t(SDB_S16, sdb_val_t{.s16 = 0x7006}), },
+        { 0x103, test_value_t(SDB_U32, sdb_val_t{.u32 = 0xdeadbeef}), },
+        { 0x104, test_value_t(SDB_U64, sdb_val_t{.u64 = 0xaabbccdd99887766ULL}), },
+        { 0x105, test_value_t(SDB_S16, sdb_val_t{.s16 = 0x6007}), },
+        { 0x106, test_value_t(SDB_S8,  sdb_val_t{.s8 = -12}) },
     };
 
     sdb_t sdb;
@@ -82,7 +82,7 @@ int test_one() {
     ec.check(sdb_init(&sdb, buf, BUF_SIZE, true),"init failure");
 
     for (const auto &e: test_values) {
-        ec.check(sdb_set_val(&sdb, e.id, e.type, &e.value),"add failed");
+        ec.check(sdb_set_val(&sdb, e.first, e.second.type, &e.second.value),"add failed");
     }
 
     const char *msg0 = "This is going to be a named blob.";
@@ -110,13 +110,16 @@ int test_one() {
     };
 
     for (const auto &sk: search_keys) {
-        auto correct_answer = test_values[sk];
-        fdata.u64 = 0;
-        auto mi = sdb_find(&sdb, sk);
-        if (!mi.valid) {
-            int8_t fail = ec.check(sdb_get(&mi,&fdata),"problem fetching data");
-            if (fail != SDB_OK) {
-                ec.check(correct_answer.compare(test_value_t(mi.id, mi.type, fdata)), "value mismatch");
+        auto tvf = test_values.find(sk);
+        if (tvf != test_values.end()) {
+            auto correct_answer = tvf->second;
+            fdata.u64 = 0;
+            auto mi = sdb_find(&sdb, sk);
+            if (!mi.valid) {
+                int8_t fail = ec.check(sdb_get(&mi,&fdata),"problem fetching data");
+                if (fail != SDB_OK) {
+                    ec.check(correct_answer.compare(test_value_t(mi.type, fdata)), "value mismatch");
+                }
             }
         }
     }

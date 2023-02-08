@@ -76,6 +76,9 @@ static void sdb_rewrite_sizes(sdb_t *sdb) {
     memcpy(&sdb->vals_size,(uint8_t *)sdb->buf + SDB_TLEN_OFFSET, SDB_TLEN_SZ);
 }
 
+static uint32_t u64_32h(uint64_t u) { return (u >> 32); }   
+static uint32_t u64_32l(uint64_t u) { return (u & 0xffffffff); }   
+
 int8_t sdb_init(sdb_t *sdb, void *b, const sdb_tlen_t l, bool clear) {
     sdb->buf = b;
     sdb->len = l;
@@ -98,7 +101,7 @@ int8_t sdb_init(sdb_t *sdb, void *b, const sdb_tlen_t l, bool clear) {
 }
 
 void sdb_show_mi(const sdb_member_info_t *mi) {
-    printf("mi: id %04x type %01x size %02x count %04x tsize %08lx handle %p %s\n",
+    printf("mi: id %04x type %01x size %02x count %04x tsize %08"PRIx32" handle %p %s\n",
         mi->id, mi->type, mi->elemsize, mi->elemcount, mi->minsize, mi->handle, mi->valid ? "valid" : "not valid");
 }
 void sdb_debug(const sdb_t *sdb) {
@@ -109,7 +112,7 @@ void sdb_debug(const sdb_t *sdb) {
         sdb->vals_size, total_size);
     printf("-d- ---------\n");
     uint8_t *p = (uint8_t *)sdb->buf + SDB_VALS_OFFSET;
-    sdb_len_t total_dsize = 0;
+    sdb_tlen_t total_dsize = 0;
     while ((p < ((uint8_t *)sdb->buf + sdb->len)) && 
            (p < ((uint8_t *)sdb->buf + SDB_VALS_OFFSET + sdb->vals_size))) {
         sdb_id_t id = 0;
@@ -122,8 +125,6 @@ void sdb_debug(const sdb_t *sdb) {
         p += sizeof(sdbtypes_t);
         sdb_len_t count = 1;
         sdb_len_t dsize = 0;
-        sdb_val_t d;
-        d.u64 = 0;
         if (type == SDB_BLOB) {
             memcpy(&dsize, p, SDB_BLOB_T_SZ);
             p += SDB_BLOB_T_SZ;
@@ -145,14 +146,17 @@ void sdb_debug(const sdb_t *sdb) {
             char nstr[30];
             memset(nstr,0,30);
             switch (type) {
-                case SDB_S8:     sprintf(nstr,"%d",d.s8); break;
-                case SDB_S16:    sprintf(nstr,"%d",d.s16); break;
-                case SDB_S32:    sprintf(nstr,"%" PRIi32,d.s32); break;
-                case SDB_S64:    sprintf(nstr,"%" PRIi64,d.s64); break;
-                case SDB_U8:     sprintf(nstr,"%u",d.u8); break;
-                case SDB_U16:    sprintf(nstr,"%u",d.u16); break;
-                case SDB_U32:    sprintf(nstr,"%" PRIu32,d.u32); break;
-                case SDB_U64:    sprintf(nstr,"%" PRIu64,d.u64); break;
+                case SDB_S8:     sprintf(nstr,"%"PRIi32,(int32_t)d.s8);  break;
+                case SDB_S16:    sprintf(nstr,"%"PRIi32,(int32_t)d.s16); break;
+                case SDB_S32:    sprintf(nstr,"%"PRIi32,d.s32); break;
+                case SDB_S64:    sprintf(nstr,"%"PRIi32" (truncated)",(int32_t)d.s64); break;
+                // my target libc will not print 64b integers...
+                // case SDB_S64:    sprintf(nstr,"%" PRIi64,d.s64); break;
+                case SDB_U8:     sprintf(nstr,"%"PRIu32,(uint32_t)d.u8);  break;
+                case SDB_U16:    sprintf(nstr,"%"PRIu32,(uint32_t)d.u16); break;
+                case SDB_U32:    sprintf(nstr,"%"PRIu32,d.u32); break;
+                case SDB_U64:    sprintf(nstr,"%"PRIu32" (truncated)", (uint32_t)d.u64); break;
+                // case SDB_U64:    sprintf(nstr,"%" PRIu64,d.u64); break;
 #if SDB_INCL_FLOAT
                 case SDB_FLOAT:  sprintf(nstr,"%f",d.f); break;
                 case SDB_DOUBLE: sprintf(nstr,"%f",d.d); break;
@@ -160,7 +164,11 @@ void sdb_debug(const sdb_t *sdb) {
                 case SDB_BLOB:   sprintf(nstr,"%u bytes",dsize); break;
                 default: break;
             }                 
-            printf("-d- %04x: %4s : %u/%u : %-20s : 0x%" PRIx64"\n",id, sdbtype_names[type], i, count, nstr, type == SDB_BLOB ? dsize : d.u64);
+            printf("-d- %04"PRIx16": %4s : %"PRIu16"/%"PRIu16" : %-20s : 0x%08"PRIx32"_%08"PRIx32"\n",
+                id, sdbtype_names[type], i, count, nstr,
+                type == SDB_BLOB ? 0     : u64_32h(d.u64),
+                type == SDB_BLOB ? dsize : u64_32l(d.u64)
+            );
         } 
     }
     printf("-d- ---------\n");
@@ -473,4 +481,32 @@ int64_t sdb_get_signed(const sdb_t *sdb, sdb_id_t id, int8_t *error) {
         *error = err;
     } 
     return rv;
+}
+
+bool sdb_is_signed(sdbtypes_t t) {
+    switch (t) {
+        case SDB_S8:
+        case SDB_S16:
+        case SDB_S32:
+        case SDB_S64:
+            return true;
+            break;
+        default:
+            break;
+    }
+    return false;
+}
+
+bool sdb_is_unsigned(sdbtypes_t t) {
+    switch (t) {
+        case SDB_U8:
+        case SDB_U16:
+        case SDB_U32:
+        case SDB_U64:
+            return true;
+            break;
+        default:
+            break;
+    }
+    return false;
 }
